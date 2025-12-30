@@ -67,4 +67,4 @@ rss_feeds:
 
 settings:
   history_file: "history.json"
-  max_history_items: 5
+  max_history_items: 1000
