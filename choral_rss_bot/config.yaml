@@ -1,0 +1,70 @@
+rss_feeds:
+  # ===== 英語：指揮・指導・リハーサル =====
+  - name: "Google News (Choral Conducting)"
+    url: "https://news.google.com/rss/search?q=choral+conducting&hl=en-US&gl=US&ceid=US:en"
+    language: "en"
+
+  - name: "Google News (Choir Rehearsal Technique)"
+    url: "https://news.google.com/rss/search?q=choir+rehearsal+technique&hl=en-US&gl=US&ceid=US:en"
+    language: "en"
+
+  - name: "Google News (Choral Vocal Technique)"
+    url: "https://news.google.com/rss/search?q=choral+vocal+technique&hl=en-US&gl=US&ceid=US:en"
+    language: "en"
+
+  - name: "Google News (Choir Pedagogy)"
+    url: "https://news.google.com/rss/search?q=choir+pedagogy&hl=en-US&gl=US&ceid=US:en"
+    language: "en"
+
+  # ===== 英語：新作・音源・現代合唱 =====
+  - name: "Google News (New Choral Works)"
+    url: "https://news.google.com/rss/search?q=new+choral+works&hl=en-US&gl=US&ceid=US:en"
+    language: "en"
+
+  - name: "Google News (Contemporary Choral Music)"
+    url: "https://news.google.com/rss/search?q=contemporary+choral+music&hl=en-US&gl=US&ceid=US:en"
+    language: "en"
+
+  # ===== 英語：イベント・ワークショップ =====
+  - name: "Google News (Choral Festival)"
+    url: "https://news.google.com/rss/search?q=choral+festival&hl=en-US&gl=US&ceid=US:en"
+    language: "en"
+
+  - name: "Google News (Choir Workshop)"
+    url: "https://news.google.com/rss/search?q=choir+workshop&hl=en-US&gl=US&ceid=US:en"
+    language: "en"
+
+  # ===== 日本語：指導・練習・イベント =====
+  - name: "Google News (合唱 指揮)"
+    url: "https://news.google.com/rss/search?q=%E5%90%88%E5%94%B1+%E6%8C%87%E6%8F%AE&hl=ja&gl=JP&ceid=JP:ja"
+    language: "ja"
+
+  - name: "Google News (合唱 発声)"
+    url: "https://news.google.com/rss/search?q=%E5%90%88%E5%94%B1+%E7%99%BA%E5%A3%B0&hl=ja&gl=JP&ceid=JP:ja"
+    language: "ja"
+
+  - name: "Google News (合唱 練習法)"
+    url: "https://news.google.com/rss/search?q=%E5%90%88%E5%94%B1+%E7%B7%B4%E7%BF%92%E6%B3%95&hl=ja&gl=JP&ceid=JP:ja"
+    language: "ja"
+
+  - name: "Google News (合唱 新作)"
+    url: "https://news.google.com/rss/search?q=%E5%90%88%E5%94%B1+%E6%96%B0%E4%BD%9C&hl=ja&gl=JP&ceid=JP:ja"
+    language: "ja"
+
+  # ===== 独仏：現代合唱・作品情報 =====
+  - name: "Google News (Neue Chormusik / DE)"
+    url: "https://news.google.com/rss/search?q=neue+Chormusik&hl=de&gl=DE&ceid=DE:de"
+    language: "de"
+
+  - name: "Google News (Zeitgenössische Chormusik / DE)"
+    url: "https://news.google.com/rss/search?q=zeitgen%C3%B6ssische+Chormusik&hl=de&gl=DE&ceid=DE:de"
+    language: "de"
+
+  - name: "Google News (Musique chorale contemporaine / FR)"
+    url: "https://news.google.com/rss/search?q=musique+chorale+contemporaine&hl=fr&gl=FR&ceid=FR:fr"
+    language: "fr"
+
+
+settings:
+  history_file: "history.json"
+  max_history_items: 5
