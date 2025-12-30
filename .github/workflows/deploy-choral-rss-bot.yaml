@@ -1,0 +1,63 @@
+name: Deploy Choral RSS Bot
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'choral_rss_bot/**'
+      - '.github/workflows/deploy-choral-rss-bot.yaml'
+
+env:
+  PROJECT_ID: starlit-road-203901
+  REGION: asia-northeast1
+  JOB_NAME: choral-rss-bot
+  IMAGE_NAME: choral-rss-bot
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker asia-northeast1-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        working-directory: choral_rss_bot
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -t asia-northeast1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:latest \
+            -t asia-northeast1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push asia-northeast1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:latest
+          docker push asia-northeast1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Deploy to Cloud Run Jobs
+        working-directory: choral_rss_bot
+        run: |
+          sed "s/PROJECT_ID/${{ env.PROJECT_ID }}/g" job.yaml > job-deployed.yaml
+          gcloud run jobs replace job-deployed.yaml --region=${{ env.REGION }}
+
+      - name: Print deployment info
+        run: |
+          echo "Deployed ${{ env.JOB_NAME }} to ${{ env.REGION }}"
+          echo "Image: asia-northeast1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"

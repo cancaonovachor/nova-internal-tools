@@ -1,0 +1,40 @@
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: choral-rss-bot
+  labels:
+    app: choral-rss-bot
+spec:
+  template:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: sync-job
+            image: asia-northeast1-docker.pkg.dev/PROJECT_ID/choral-rss-bot/choral-rss-bot:latest
+            command: ["uv", "run", "main.py", "--mode", "discord"]
+            resources:
+              limits:
+                cpu: '1'
+                memory: '1Gi'
+              requests:
+                cpu: '0.5'
+                memory: '512Mi'
+            env:
+            # Secret Managerから取得
+            - name: DISCORD_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: choral-rss-bot-discord-webhook
+                  key: latest
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: choral-rss-bot-gemini-api-key
+                  key: latest
+
+            # オプション設定
+            - name: BATCH_SIZE
+              value: "500"
+            - name: ENABLE_FILE_LOGGING
+              value: "false"
