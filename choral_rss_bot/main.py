@@ -43,9 +43,9 @@ def get_storage(config, args):
     if args.ignore_history:
         return None # Special case handled in main
 
-    # Check for Cloud Run environment or explicit flag (if we added one)
-    # Cloud Run sets K_SERVICE, K_REVISION etc.
-    is_cloud_run = os.getenv('K_SERVICE') is not None
+    # Check for Cloud Run environment
+    # Cloud Run Service sets K_SERVICE, Cloud Run Jobs sets CLOUD_RUN_JOB
+    is_cloud_run = os.getenv('K_SERVICE') is not None or os.getenv('CLOUD_RUN_JOB') is not None
 
     if is_cloud_run:
         console.print("[green]Running in Cloud Run environment. Using Firestore.[/green]")
