@@ -28,10 +28,10 @@ gcloud services enable bigquery.googleapis.com
 
 # Dockerイメージをビルドしてプッシュ
 echo "Dockerイメージをビルド中..."
-docker build -t asia-northeast1-docker.pkg.dev/$PROJECT_ID/$IMAGE_NAME:latest .
+docker build --platform linux/amd64 -t asia-northeast1-docker.pkg.dev/$PROJECT_ID/$IMAGE_NAME/$IMAGE_NAME:latest .
 
 echo "Dockerイメージをプッシュ中..."
-docker push asia-northeast1-docker.pkg.dev/$PROJECT_ID/$IMAGE_NAME:latest
+docker push asia-northeast1-docker.pkg.dev/$PROJECT_ID/$IMAGE_NAME/$IMAGE_NAME:latest
 
 # job.yamlのPROJECT_IDを置換
 echo "job.yamlを更新中..."
