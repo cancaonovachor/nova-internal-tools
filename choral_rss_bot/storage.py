@@ -40,16 +40,17 @@ class JsonFileStorage(Storage):
             console.print(f"[red]Error saving history to {self.file_path}: {e}[/red]")
 
 class FirestoreStorage(Storage):
-    def __init__(self, collection_name: str, document_id: str):
+    def __init__(self, collection_name: str, document_id: str, database: str = "choral-rss-bot"):
         self.collection_name = collection_name
         self.document_id = document_id
+        self.database = database
         self._db = None
 
     @property
     def db(self):
         if self._db is None:
             from google.cloud import firestore
-            self._db = firestore.Client()
+            self._db = firestore.Client(database=self.database)
         return self._db
 
     def load_history(self) -> List[str]:
