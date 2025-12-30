@@ -234,17 +234,20 @@ def main():
                     if success:
                         processed_links.add(link)
                         new_links.append(link)
-                        history.append(link) # Keep track in memory for saving
+                        history.append(link)
+                        # 通知成功ごとに即座にFirestoreに保存
+                        if storage and not args.ignore_history:
+                            storage.save_history(history, max_items=max_history_items)
+                            console.print(f"[blue]Saved to Firestore: {link}[/blue]")
                         time.sleep(1)
 
         except Exception as e:
             console.print(f"[red]Error checking feed {feed['name']}: {e}[/red]")
 
     if args.mode != 'local':
-        if new_links and not args.ignore_history and storage:
-            storage.save_history(history, max_items=max_history_items)
-            console.print(f"[blue]Updated history with {len(new_links)} new items.[/blue]")
-        elif not new_links:
+        if new_links:
+            console.print(f"[green]Completed: {len(new_links)} new items processed.[/green]")
+        else:
             console.print("No new items found.")
 
 if __name__ == "__main__":
