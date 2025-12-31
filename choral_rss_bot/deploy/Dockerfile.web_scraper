@@ -11,8 +11,8 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY uv.lock .
 
-# Install dependencies
-RUN uv sync --frozen --no-install-project || uv sync --no-install-project
+# Install dependencies (including scraper extras)
+RUN uv sync --frozen --no-install-project --extra scraper || uv sync --no-install-project --extra scraper
 
 # Copy source code
 COPY . .

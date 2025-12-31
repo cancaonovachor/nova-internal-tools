@@ -13,7 +13,7 @@ from rich.console import Console
 
 from common.discord import send_discord_message
 from common.storage import FirestoreStorage, JsonFileStorage
-from rss.llm_helper import summarize_and_translate
+from rss.llm_helper import extract_and_explain_proper_nouns, translate_title
 
 load_dotenv()
 console = Console()
@@ -41,15 +41,6 @@ def get_storage(config, ignore_history: bool):
     else:
         console.print("[blue]Running locally. Using JsonFileStorage.[/blue]")
         return JsonFileStorage(config["settings"]["history_file"])
-
-
-def get_content_text(entry) -> str:
-    """エントリからコンテンツテキストを取得"""
-    if "summary" in entry:
-        return entry["summary"]
-    if "content" in entry:
-        return entry["content"][0].get("value", "")
-    return ""
 
 
 def format_date(date_struct) -> str:
@@ -81,37 +72,45 @@ def process_entry(entry, feed_config, mode: str) -> dict:
     """エントリを処理して記事データを生成"""
     title = entry.get("title", "No Title")
     link = entry.get("link", "")
-    rss_summary = get_content_text(entry)
     feed_name = feed_config["name"]
+    is_japanese = feed_config.get("language") == "ja"
 
     if mode == "local":
-        console.print(f"[yellow]Processing with LLM...[/yellow] {title}")
+        console.print(f"[yellow]Processing...[/yellow] {title}")
 
-    llm_result = summarize_and_translate(title, rss_summary, feed_name)
+    # タイトルを日本語に翻訳
+    title_ja = translate_title(title)
+
+    # 固有名詞の抽出と解説
+    noun_result = extract_and_explain_proper_nouns(title)
 
     published_parsed = entry.get("published_parsed") or entry.get("updated_parsed")
     formatted_date = format_date(published_parsed)
 
-    is_japanese = feed_config.get("language") == "ja" or llm_result.get("language") == "ja"
-
-    if not is_japanese:
-        title_section = f"🇺🇸英語タイトル: {llm_result.get('title_en', title)}\n🇯🇵日本語タイトル: {llm_result.get('title_ja')}"
+    # タイトルセクションの構築
+    if is_japanese:
+        title_section = f"📄タイトル: {title_ja}"
     else:
-        title_section = f"🇯🇵日本語タイトル: {llm_result.get('title_ja')}"
+        title_section = f"🇺🇸英語タイトル: {title}\n🇯🇵日本語タイトル: {title_ja}"
+
+    # 解説セクションの構築
+    explanation_section = ""
+    if noun_result.get("explanations"):
+        explanation_section = f"""
+
+📚 用語解説
+
+{noun_result.get('explanations')}"""
 
     message_text = f"""📰 『{feed_name}』ジャンルの新着記事です！
 📆公開日時: {formatted_date}
 {title_section}
-🔗リンク: {link}
-
-📝 要約
-
-{llm_result.get('summary_ja')}"""
+🔗リンク: {link}{explanation_section}"""
 
     return {
         "title": title,
         "link": link,
-        "display_title": llm_result.get("title_ja"),
+        "display_title": title_ja,
         "message_text": message_text,
         "source": feed_name,
     }
@@ -163,7 +162,7 @@ def main():
                 if not link or link in processed_links:
                     continue
 
-                if not is_within_days(entry, days=30):
+                if not is_within_days(entry, days=3):
                     if args.mode == "local":
                         console.print(f"[dim]Skipping old article: {entry.get('title', 'No Title')}[/dim]")
                     continue
