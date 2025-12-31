@@ -59,9 +59,12 @@ def deploy_agent(
         config={
             "requirements": [
                 "google-cloud-aiplatform[agent_engines,adk]>=1.112",
+                "google-adk>=0.2.0",
                 "requests>=2.31.0",
                 "python-dotenv>=1.0.1",
                 "rich>=13.9.4",
+                "cloudpickle>=3.0.0",
+                "pydantic>=2.0.0",
             ],
             "staging_bucket": staging_bucket,
             "env_vars": {

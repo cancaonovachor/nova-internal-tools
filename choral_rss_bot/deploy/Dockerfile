@@ -1,5 +1,4 @@
-# Playwright with Chromium for web scraping API service
-FROM mcr.microsoft.com/playwright/python:v1.49.0-noble
+FROM python:3.12-slim
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
@@ -9,7 +8,7 @@ WORKDIR /app
 
 # Copy dependency files
 COPY pyproject.toml .
-COPY uv.lock .
+# COPY uv.lock . # Uncomment if uv.lock exists
 
 # Install dependencies
 RUN uv sync --frozen --no-install-project || uv sync --no-install-project
@@ -19,11 +18,6 @@ COPY . .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV PORT=8080
 
-# Expose port
-EXPOSE 8080
-
-# Entrypoint for scraper API service
-CMD ["uv", "run", "python", "scraper_api.py"]
+# Entrypoint
+ENTRYPOINT ["uv", "run", "python", "-m", "rss.main", "--mode", "discord"]

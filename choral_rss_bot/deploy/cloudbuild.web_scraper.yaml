@@ -2,7 +2,7 @@
 steps:
   # Dockerイメージをビルド
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-f', 'Dockerfile.web_scraper', '-t', 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/choral-rss-bot/choral-scraper-api:$BUILD_ID', '.']
+    args: ['build', '-f', 'deploy/Dockerfile.web_scraper', '-t', 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/choral-rss-bot/choral-scraper-api:$BUILD_ID', '.']
 
   # Dockerイメージをプッシュ
   - name: 'gcr.io/cloud-builders/docker'
@@ -27,10 +27,6 @@ steps:
 
 # タイムアウト設定（Playwrightのビルドに時間がかかるため長めに設定）
 timeout: '1800s'
-
-# サブスティテューション
-substitutions:
-  _REGION: 'asia-northeast1'
 
 # 成果物の設定
 images:

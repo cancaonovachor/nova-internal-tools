@@ -1,23 +1,34 @@
-"""Vertex AI Agent Engine用のエージェント定義（ルートディレクトリに配置）"""
+"""ADKエージェント定義"""
 
 import os
 
 import requests
+from dotenv import load_dotenv
 from google.adk.agents import Agent
 
-from scraper.api_tools import (
-    fetch_article_content,
-    fetch_jcanet_news,
-    fetch_panamusica_news,
-)
+from scraper.tools import fetch_article_content, fetch_jcanet_news, fetch_panamusica_news
+
+load_dotenv()
 
 
 def send_discord_notification(
     title: str, summary: str, url: str, source: str, date: str
 ) -> dict:
-    """要約した記事をDiscordに通知する。"""
-    discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
-    if not discord_webhook_url:
+    """
+    要約した記事をDiscordに通知する。
+
+    Args:
+        title: 記事のタイトル
+        summary: 記事の要約（日本語）
+        url: 記事のURL
+        source: ソースサイト名
+        date: 公開日
+
+    Returns:
+        dict: 送信結果
+    """
+    webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
+    if not webhook_url:
         return {"status": "error", "message": "DISCORD_WEBHOOK_URL is not set"}
 
     message = f"""**{source}** の新着記事
@@ -30,7 +41,7 @@ def send_discord_notification(
 """
 
     try:
-        response = requests.post(discord_webhook_url, json={"content": message})
+        response = requests.post(webhook_url, json={"content": message})
         response.raise_for_status()
         return {"status": "success", "message": f"Sent notification for: {title}"}
     except requests.exceptions.RequestException as e:
@@ -51,7 +62,7 @@ root_agent = Agent(
 2. fetch_panamusica_news() でパナムジカのお知らせを取得
 3. 【必須】各記事について fetch_article_content(url) で本文を取得
 4. 取得した本文を基に、3-4文程度で要約を作成
-5. send_discord_notification() でDiscordに通知
+5. send_discord_notification() でDiscordに通知（discordモードの場合のみ）
 
 処理する記事数：各サイトから最新3件ずつ
 """,

@@ -99,7 +99,7 @@ deploy_scraper() {
 
     # Cloud Buildでビルド＆デプロイ
     echo -e "${YELLOW}Building and deploying with Cloud Build...${NC}"
-    gcloud builds submit --config=cloudbuild.web_scraper.yaml
+    gcloud builds submit --config=deploy/cloudbuild.web_scraper.yaml
 
     # デプロイされたURLを取得
     SCRAPER_URL=$(gcloud run services describe choral-scraper-api \
@@ -143,7 +143,7 @@ deploy_agent() {
 
     # Pythonスクリプトでデプロイ
     echo -e "${YELLOW}Deploying agent...${NC}"
-    uv run python deploy_agent_engine.py deploy \
+    uv run python deploy/deploy_agent_engine.py deploy \
         --project-id "$PROJECT_ID" \
         --location us-central1 \
         --staging-bucket "$STAGING_BUCKET" \

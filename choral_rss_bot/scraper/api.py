@@ -1,9 +1,5 @@
-"""
-Cloud Run用のスクレイピングAPIサービス
-PlaywrightベースのWebスクレイピング機能をREST APIとして提供
-"""
+"""Cloud Run用のスクレイピングAPIサービス"""
 
-import asyncio
 import os
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -12,11 +8,10 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from web_scraper_tools import WebScraperTools
+from scraper.tools import WebScraperTools
 
 load_dotenv()
 
-# グローバルスクレイパーインスタンス
 _scraper: Optional[WebScraperTools] = None
 
 
