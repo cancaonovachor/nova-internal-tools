@@ -1,0 +1,33 @@
+# Cloud Build設定ファイル - Web Scraper API Service
+steps:
+  # Dockerイメージをビルド
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-f', 'deploy/Dockerfile.web_scraper', '-t', 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/choral-rss-bot/choral-scraper-api:$BUILD_ID', '.']
+
+  # Dockerイメージをプッシュ
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/choral-rss-bot/choral-scraper-api:$BUILD_ID']
+
+  # Cloud Run Serviceをデプロイ
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'choral-scraper-api'
+      - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/choral-rss-bot/choral-scraper-api:$BUILD_ID'
+      - '--region=asia-northeast1'
+      - '--platform=managed'
+      - '--memory=4Gi'
+      - '--cpu=2'
+      - '--timeout=300'
+      - '--min-instances=0'
+      - '--max-instances=1'
+      - '--allow-unauthenticated'
+
+# タイムアウト設定（Playwrightのビルドに時間がかかるため長めに設定）
+timeout: '1800s'
+
+# 成果物の設定
+images:
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/choral-rss-bot/choral-scraper-api:$BUILD_ID'
