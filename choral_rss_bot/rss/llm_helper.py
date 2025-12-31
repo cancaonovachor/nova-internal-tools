@@ -101,3 +101,36 @@ def extract_and_explain_proper_nouns(title: str) -> dict:
     except Exception as e:
         print(f"Proper noun extraction/explanation error: {e}")
         return {"proper_nouns": [], "explanations": ""}
+
+
+def translate_title(title: str) -> str:
+    """
+    タイトルを日本語に翻訳する（日本語の場合はそのまま返す）
+
+    Args:
+        title: 記事タイトル
+
+    Returns:
+        str: 日本語タイトル
+    """
+    if not GEMINI_API_KEY:
+        return title
+
+    client = genai.Client(api_key=GEMINI_API_KEY)
+
+    prompt = f"""以下のタイトルを日本語に翻訳してください。
+すでに日本語の場合はそのまま返してください。
+翻訳結果のみを出力し、説明や前置きは不要です。
+
+タイトル: {title}"""
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-lite-preview-02-05",
+            contents=prompt,
+        )
+        return response.text.strip()
+
+    except Exception as e:
+        print(f"Translation error: {e}")
+        return title

@@ -13,7 +13,7 @@ from rich.console import Console
 
 from common.discord import send_discord_message
 from common.storage import FirestoreStorage, JsonFileStorage
-from rss.llm_helper import extract_and_explain_proper_nouns
+from rss.llm_helper import extract_and_explain_proper_nouns, translate_title
 
 load_dotenv()
 console = Console()
@@ -73,15 +73,25 @@ def process_entry(entry, feed_config, mode: str) -> dict:
     title = entry.get("title", "No Title")
     link = entry.get("link", "")
     feed_name = feed_config["name"]
+    is_japanese = feed_config.get("language") == "ja"
 
     if mode == "local":
-        console.print(f"[yellow]Extracting proper nouns...[/yellow] {title}")
+        console.print(f"[yellow]Processing...[/yellow] {title}")
+
+    # タイトルを日本語に翻訳
+    title_ja = translate_title(title)
 
     # 固有名詞の抽出と解説
     noun_result = extract_and_explain_proper_nouns(title)
 
     published_parsed = entry.get("published_parsed") or entry.get("updated_parsed")
     formatted_date = format_date(published_parsed)
+
+    # タイトルセクションの構築
+    if is_japanese:
+        title_section = f"📄タイトル: {title_ja}"
+    else:
+        title_section = f"🇺🇸英語タイトル: {title}\n🇯🇵日本語タイトル: {title_ja}"
 
     # 解説セクションの構築
     explanation_section = ""
@@ -94,13 +104,13 @@ def process_entry(entry, feed_config, mode: str) -> dict:
 
     message_text = f"""📰 『{feed_name}』ジャンルの新着記事です！
 📆公開日時: {formatted_date}
-📄タイトル: {title}
+{title_section}
 🔗リンク: {link}{explanation_section}"""
 
     return {
         "title": title,
         "link": link,
-        "display_title": title,
+        "display_title": title_ja,
         "message_text": message_text,
         "source": feed_name,
     }
