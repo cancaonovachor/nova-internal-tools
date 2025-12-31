@@ -4,11 +4,107 @@ import os
 
 import requests
 from dotenv import load_dotenv
+from google import genai
 from google.adk.agents import Agent
+from google.genai import types
 
 from scraper.tools import fetch_article_content, fetch_jcanet_news, fetch_panamusica_news
 
 load_dotenv()
+
+# 処理済みURLを追跡（エージェント実行後に保存するため）
+_processed_urls: list[str] = []
+
+
+def get_processed_urls() -> list[str]:
+    """処理済みURLリストを取得"""
+    return _processed_urls.copy()
+
+
+def clear_processed_urls():
+    """処理済みURLリストをクリア"""
+    global _processed_urls
+    _processed_urls = []
+
+
+def _extract_and_explain_proper_nouns(title: str) -> str:
+    """タイトルから固有名詞を抽出し解説を生成"""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return ""
+
+    client = genai.Client(api_key=api_key)
+
+    # 固有名詞を抽出
+    extract_prompt = f"""以下のタイトルから、合唱音楽に関連する固有名詞を抽出してください。
+
+タイトル: {title}
+
+【抽出対象】
+- 人名（作曲家、指揮者、歌手など）
+- 合唱団・オーケストラ名
+- 作品名・曲名
+- 音楽イベント・フェスティバル名
+
+【抽出しないもの】
+- 月名、曜日、年号
+- 一般的な場所名
+- 普通名詞や形容詞
+
+出力形式（JSON）:
+{{"proper_nouns": ["固有名詞1", "固有名詞2", ...]}}
+
+固有名詞が見つからない場合は空の配列を返してください。"""
+
+    try:
+        import json
+
+        extract_response = client.models.generate_content(
+            model="gemini-2.0-flash-lite-preview-02-05",
+            contents=extract_prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json"),
+        )
+
+        extract_text = extract_response.text.strip()
+        if extract_text.startswith("```"):
+            extract_text = extract_text.split("\n", 1)[1]
+            if extract_text.endswith("```"):
+                extract_text = extract_text.rsplit("\n", 1)[0]
+
+        extract_result = json.loads(extract_text.strip())
+        proper_nouns = extract_result.get("proper_nouns", [])
+
+        if not proper_nouns:
+            return ""
+
+        # Google Searchで解説を生成
+        search_prompt = f"""以下の固有名詞について、それぞれ1-2文で簡潔に日本語で解説してください。
+合唱音楽や音楽に関連する文脈を優先して説明してください。
+
+固有名詞: {', '.join(proper_nouns)}
+
+【重要なルール】
+- 前置きや挨拶は絶対に書かないこと
+- 解説は必ず日本語で書くこと
+- 以下の形式のみで出力すること：
+
+・固有名詞名: 解説文
+
+わからない場合や一般的すぎる単語はスキップしてください。"""
+
+        search_response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=search_prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+            ),
+        )
+
+        return search_response.text.strip()
+
+    except Exception as e:
+        print(f"Proper noun extraction error: {e}")
+        return ""
 
 
 def send_discord_notification(
@@ -31,18 +127,32 @@ def send_discord_notification(
     if not webhook_url:
         return {"status": "error", "message": "DISCORD_WEBHOOK_URL is not set"}
 
-    message = f"""**{source}** の新着記事
-**タイトル**: {title}
-**公開日**: {date}
-**URL**: {url}
+    # 固有名詞の解説を取得
+    explanations = _extract_and_explain_proper_nouns(title)
+    explanation_section = ""
+    if explanations:
+        explanation_section = f"""
 
-**要約**:
-{summary}
+📚 **用語解説**
+{explanations}"""
+
+    message = f"""📰 **{source}** の新着記事
+📆 **公開日**: {date}
+📄 **タイトル**: {title}
+🔗 **URL**: {url}
+
+📝 **要約**
+{summary}{explanation_section}
 """
 
     try:
         response = requests.post(webhook_url, json={"content": message})
         response.raise_for_status()
+
+        # 処理済みURLを追跡
+        global _processed_urls
+        _processed_urls.append(url)
+
         return {"status": "success", "message": f"Sent notification for: {title}"}
     except requests.exceptions.RequestException as e:
         return {"status": "error", "message": f"Failed to send: {str(e)}"}

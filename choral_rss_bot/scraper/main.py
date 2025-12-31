@@ -11,7 +11,7 @@ from google.genai import types
 from rich.console import Console
 
 from common.storage import FirestoreStorage, JsonFileStorage
-from scraper.agent import root_agent
+from scraper.agent import clear_processed_urls, get_processed_urls, root_agent
 from scraper.tools import cleanup_scraper
 
 load_dotenv()
@@ -38,9 +38,13 @@ async def run_agent(mode: str = "local", ignore_history: bool = False):
     """エージェントを実行"""
     console.print(f"[bold cyan]Starting Web Scraper Agent in {mode} mode[/bold cyan]")
 
+    # 処理済みURLをクリア
+    clear_processed_urls()
+
     storage = None if ignore_history else get_storage(use_firestore=(mode == "discord"))
 
     processed_urls = set()
+    history = []
     if storage and not ignore_history:
         history = storage.load_history()
         processed_urls = set(history)
@@ -107,6 +111,15 @@ async def run_agent(mode: str = "local", ignore_history: bool = False):
                             console.print(part.text)
 
         console.print("[green]Agent execution completed[/green]")
+
+        # 処理済みURLを履歴に保存
+        new_urls = get_processed_urls()
+        if new_urls and storage and not ignore_history:
+            for url in new_urls:
+                if url not in history:
+                    history.append(url)
+            storage.save_history(history, max_items=500)
+            console.print(f"[green]Saved {len(new_urls)} new URLs to history[/green]")
 
     except Exception as e:
         console.print(f"[red]Error running agent: {e}[/red]")
