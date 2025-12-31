@@ -13,7 +13,7 @@ from rich.console import Console
 
 from common.discord import send_discord_message
 from common.storage import FirestoreStorage, JsonFileStorage
-from rss.llm_helper import summarize_and_translate
+from rss.llm_helper import extract_and_explain_proper_nouns, summarize_and_translate
 
 load_dotenv()
 console = Console()
@@ -89,6 +89,11 @@ def process_entry(entry, feed_config, mode: str) -> dict:
 
     llm_result = summarize_and_translate(title, rss_summary, feed_name)
 
+    # 固有名詞の抽出と解説
+    if mode == "local":
+        console.print(f"[yellow]Extracting proper nouns...[/yellow]")
+    noun_result = extract_and_explain_proper_nouns(title)
+
     published_parsed = entry.get("published_parsed") or entry.get("updated_parsed")
     formatted_date = format_date(published_parsed)
 
@@ -99,6 +104,15 @@ def process_entry(entry, feed_config, mode: str) -> dict:
     else:
         title_section = f"🇯🇵日本語タイトル: {llm_result.get('title_ja')}"
 
+    # 解説セクションの構築
+    explanation_section = ""
+    if noun_result.get("explanations"):
+        explanation_section = f"""
+
+📚 用語解説
+
+{noun_result.get('explanations')}"""
+
     message_text = f"""📰 『{feed_name}』ジャンルの新着記事です！
 📆公開日時: {formatted_date}
 {title_section}
@@ -106,7 +120,7 @@ def process_entry(entry, feed_config, mode: str) -> dict:
 
 📝 要約
 
-{llm_result.get('summary_ja')}"""
+{llm_result.get('summary_ja')}{explanation_section}"""
 
     return {
         "title": title,
