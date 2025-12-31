@@ -12,7 +12,7 @@ spec:
           containers:
           - name: sync-job
             image: asia-northeast1-docker.pkg.dev/PROJECT_ID/choral-rss-bot/choral-rss-bot:latest
-            command: ["uv", "run", "main.py", "--mode", "discord"]
+            command: ["uv", "run", "python", "-m", "rss.main", "--mode", "discord"]
             resources:
               limits:
                 cpu: '1'
