@@ -162,7 +162,7 @@ def main():
                 if not link or link in processed_links:
                     continue
 
-                if not is_within_days(entry, days=30):
+                if not is_within_days(entry, days=3):
                     if args.mode == "local":
                         console.print(f"[dim]Skipping old article: {entry.get('title', 'No Title')}[/dim]")
                     continue
