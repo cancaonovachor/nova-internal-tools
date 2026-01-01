@@ -44,45 +44,73 @@ cp .env.example .env
 ## 使い方
 
 ### Web Scraper Agent (Google ADK)
-Google ADKを使用したAIエージェントで、合唱関連サイトをスクレイピングし、記事を要約してDiscordに通知します。
+Google ADKを使用したAIエージェントで、合唱関連サイト（日本合唱指揮者協会、パナムジカ）をスクレイピングし、記事を要約してDiscordに通知します。
 
-**ローカルで動作確認（表示のみ）:**
+#### Cloud Run APIを使用する場合（推奨）
+デプロイ済みのCloud Run APIを使用してスクレイピングを実行します。
+
 ```bash
-uv run python scraper/main.py --mode local
+# 表示のみ（Discord送信しない）
+SCRAPER_API_URL="https://choral-scraper-api-938216897098.asia-northeast1.run.app" \
+  uv run python -m scraper.main --mode local --ignore-history
+
+# Discord送信あり
+SCRAPER_API_URL="https://choral-scraper-api-938216897098.asia-northeast1.run.app" \
+  uv run python -m scraper.main --mode discord --ignore-history
 ```
 
-**Discord送信:**
+#### ローカルでAPIも起動する場合
+Playwrightを使用してローカルでスクレイピングを実行します。
+
 ```bash
-uv run python scraper/main.py --mode discord
+# ターミナル1: API起動
+uv run python -m scraper.api
+
+# ターミナル2: エージェント実行
+SCRAPER_API_URL="http://localhost:8080" \
+  uv run python -m scraper.main --mode local
 ```
 
 **オプション:**
-- `--ignore-history`: 履歴を無視して全ての記事を処理
+- `--mode local`: 表示のみ（Discord送信しない）
+- `--mode discord`: Discord送信あり
+- `--ignore-history`: 履歴を無視して全記事を処理
 
-### ローカルでの動作確認 (Dry Run)
-Discordには送信せず、コンソールに要約結果などを表示します。APIコールのテストや、どんな記事が取れるかの確認に便利です。
-
-```bash
-uv run main.py --mode local
-```
-
-### 本番実行 (Discord送信)
-実際にDiscordにメッセージを送信します。送信した記事は `history.json` に記録され、次回以降スキップされます。
+### RSS Bot（従来版）
+RSSフィードから記事を収集し、Discordに通知します。
 
 ```bash
-uv run main.py --mode discord
+# 表示のみ（Discord送信しない）
+uv run python -m rss.main --mode local
+
+# Discord送信あり
+uv run python -m rss.main --mode discord
 ```
 
-cronやGitHub Actionsなどで定期実行することを想定しています。
+送信した記事は履歴に記録され、次回以降スキップされます。
 
 ## ディレクトリ構成
-- `main.py`: メインスクリプト
-- `llm_helper.py`: LLM処理ロジック
-- `config.yaml`: RSSフィード設定
-- `pyproject.toml`: 依存関係定義
-- `history.json`: 送信済み履歴 (自動生成)
-- `storage.py`: 履歴保存ロジック（JSON/Firestore抽象化）
-- `Dockerfile`: Cloud Run用コンテナ定義
+```
+choral_rss_bot/
+├── rss/                    # RSS Bot
+│   ├── main.py             # メインスクリプト
+│   ├── llm_helper.py       # LLM処理（固有名詞解説など）
+│   └── config.yaml         # RSSフィード設定
+├── scraper/                # Web Scraper Agent
+│   ├── main.py             # エージェント実行スクリプト
+│   ├── agent.py            # ADKエージェント定義
+│   ├── api.py              # Cloud Run用FastAPI
+│   ├── api_tools.py        # API呼び出しツール
+│   └── tools.py            # Playwrightスクレイピング
+├── common/                 # 共通モジュール
+│   └── storage.py          # 履歴保存（JSON/Firestore）
+├── deploy/                 # デプロイ設定
+│   ├── Dockerfile          # RSS Bot用
+│   ├── Dockerfile.web_scraper  # Scraper API用
+│   └── cloudbuild.*.yaml   # Cloud Build設定
+├── agent_engine_agent.py   # Vertex AI Agent Engine用
+└── pyproject.toml          # 依存関係定義
+```
 
 ## クラウドデプロイ (Google Cloud Run Jobs)
 
