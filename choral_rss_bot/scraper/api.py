@@ -205,12 +205,12 @@ async def send_discord_notification(request: DiscordNotificationRequest):
 📚 **用語解説**
 {explanations}"""
 
-    message = f"""📰 **{request.source}** の新着記事
-📆 **公開日**: {request.date}
-📄 **タイトル**: {request.title}
-🔗 **URL**: {request.url}
+    message = f"""📰 『{request.source}』の新着記事です！
+📆公開日時: {request.date}
+📄タイトル: {request.title}
+🔗リンク: {request.url}
 
-📝 **要約**
+📝 要約
 {request.summary}{explanation_section}
 """
 
