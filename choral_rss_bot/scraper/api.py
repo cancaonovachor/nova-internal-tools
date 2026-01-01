@@ -129,6 +129,7 @@ class ArticlesResponse(BaseModel):
     status: str
     articles: list
     source: str
+    error_message: Optional[str] = None
 
 
 class ArticleContentResponse(BaseModel):
@@ -157,6 +158,10 @@ async def fetch_jcanet():
         raise HTTPException(status_code=500, detail="Scraper not initialized")
 
     result = await _scraper.fetch_jcanet_news()
+    if result.get("status") == "error":
+        print(f"jcanet scraping error: {result.get('error_message', 'unknown')}")
+    else:
+        print(f"jcanet: fetched {len(result.get('articles', []))} articles")
     return ArticlesResponse(**result)
 
 
@@ -167,6 +172,10 @@ async def fetch_panamusica():
         raise HTTPException(status_code=500, detail="Scraper not initialized")
 
     result = await _scraper.fetch_panamusica_news()
+    if result.get("status") == "error":
+        print(f"panamusica scraping error: {result.get('error_message', 'unknown')}")
+    else:
+        print(f"panamusica: fetched {len(result.get('articles', []))} articles")
     return ArticlesResponse(**result)
 
 
