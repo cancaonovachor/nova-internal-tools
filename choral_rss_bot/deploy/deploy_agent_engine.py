@@ -13,6 +13,53 @@ load_dotenv()
 console = Console()
 
 
+def _create_agent_tools(api_url: str):
+    """エージェントのツール関数を作成（クロージャで環境変数をキャプチャ）"""
+    import requests
+
+    def fetch_jcanet_news() -> dict:
+        """日本合唱指揮者協会の新着情報を取得"""
+        try:
+            response = requests.get(f"{api_url}/api/jcanet", timeout=60)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            return {"status": "error", "error_message": str(e), "articles": [], "source": "日本合唱指揮者協会"}
+
+    def fetch_panamusica_news() -> dict:
+        """パナムジカのお知らせを取得"""
+        try:
+            response = requests.get(f"{api_url}/api/panamusica", timeout=60)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            return {"status": "error", "error_message": str(e), "articles": [], "source": "パナムジカ"}
+
+    def fetch_article_content(url: str) -> dict:
+        """記事コンテンツを取得"""
+        try:
+            response = requests.post(f"{api_url}/api/article", json={"url": url}, timeout=60)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            return {"status": "error", "url": url, "title": "", "content": "", "error_message": str(e)}
+
+    def send_discord_notification(title: str, summary: str, url: str, source: str, date: str) -> dict:
+        """Discord通知を送信"""
+        try:
+            response = requests.post(
+                f"{api_url}/api/discord",
+                json={"title": title, "summary": summary, "url": url, "source": source, "date": date},
+                timeout=120,
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            return {"status": "error", "message": f"Failed to send: {str(e)}"}
+
+    return [fetch_jcanet_news, fetch_panamusica_news, fetch_article_content, send_discord_notification]
+
+
 def deploy_agent(
     project_id: str,
     location: str,
@@ -31,6 +78,7 @@ def deploy_agent(
         discord_webhook_url: Discord Webhook URL
     """
     import vertexai
+    from google.adk.agents import Agent
 
     # Vertex AI初期化
     vertexai.init(project=project_id, location=location)
@@ -40,8 +88,30 @@ def deploy_agent(
     console.print(f"Location: {location}")
     console.print(f"Staging bucket: {staging_bucket}")
 
-    # エージェントをインポート
-    from agent_engine_agent import root_agent
+    # ツール関数を作成（APIのURLをクロージャでキャプチャ）
+    tools = _create_agent_tools(scraper_api_url)
+
+    # エージェントを作成
+    root_agent = Agent(
+        name="choral_news_scraper_agent",
+        model="gemini-2.0-flash",
+        description="合唱関連サイトの新着情報を収集し、要約してDiscordに通知するエージェント",
+        instruction="""あなたは合唱コミュニティのための情報収集エージェントです。
+
+【重要】各記事の要約を作成する前に、必ずfetch_article_content()で記事本文を取得してください。
+タイトルだけで要約を推測してはいけません。
+
+手順：
+1. fetch_jcanet_news() で日本合唱指揮者協会の新着情報を取得
+2. fetch_panamusica_news() でパナムジカのお知らせを取得
+3. 【必須】各記事について fetch_article_content(url) で本文を取得
+4. 取得した本文を基に、3-4文程度で要約を作成
+5. send_discord_notification() でDiscordに通知
+
+処理する記事数：各サイトから最新3件ずつ
+""",
+        tools=tools,
+    )
 
     # AdkAppでラップ
     app = agent_engines.AdkApp(
@@ -61,8 +131,6 @@ def deploy_agent(
                 "google-cloud-aiplatform[agent_engines,adk]>=1.112",
                 "google-adk>=0.2.0",
                 "requests>=2.31.0",
-                "python-dotenv>=1.0.1",
-                "rich>=13.9.4",
                 "cloudpickle>=3.0.0",
                 "pydantic>=2.0.0",
             ],
@@ -75,7 +143,8 @@ def deploy_agent(
     )
 
     console.print(f"[green]Agent deployed successfully![/green]")
-    console.print(f"Agent ID: {remote_agent.name}")
+    agent_name = remote_agent.api_resource.name if hasattr(remote_agent, 'api_resource') else str(remote_agent)
+    console.print(f"Agent ID: {agent_name}")
 
     return remote_agent
 
