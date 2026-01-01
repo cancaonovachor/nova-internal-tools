@@ -43,6 +43,22 @@ cp .env.example .env
 
 ## 使い方
 
+### Web Scraper Agent (Google ADK)
+Google ADKを使用したAIエージェントで、合唱関連サイトをスクレイピングし、記事を要約してDiscordに通知します。
+
+**ローカルで動作確認（表示のみ）:**
+```bash
+uv run python scraper/main.py --mode local
+```
+
+**Discord送信:**
+```bash
+uv run python scraper/main.py --mode discord
+```
+
+**オプション:**
+- `--ignore-history`: 履歴を無視して全ての記事を処理
+
 ### ローカルでの動作確認 (Dry Run)
 Discordには送信せず、コンソールに要約結果などを表示します。APIコールのテストや、どんな記事が取れるかの確認に便利です。
 
