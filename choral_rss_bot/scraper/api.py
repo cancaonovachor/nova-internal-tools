@@ -202,7 +202,7 @@ async def send_discord_notification(request: DiscordNotificationRequest):
     if explanations:
         explanation_section = f"""
 
-📚 **用語解説**
+📚 用語解説
 {explanations}"""
 
     message = f"""📰 『{request.source}』の新着記事です！
