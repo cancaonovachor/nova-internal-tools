@@ -24,6 +24,7 @@ steps:
       - '--min-instances=0'
       - '--max-instances=1'
       - '--allow-unauthenticated'
+      - '--set-secrets=DISCORD_WEBHOOK_URL=choral-rss-bot-discord-webhook:latest,GEMINI_API_KEY=choral-rss-bot-gemini-api-key:latest'
 
 # タイムアウト設定（Playwrightのビルドに時間がかかるため長めに設定）
 timeout: '1800s'
