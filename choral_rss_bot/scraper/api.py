@@ -12,11 +12,13 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
+from common.storage import FirestoreStorage
 from scraper.tools import WebScraperTools
 
 load_dotenv()
 
 _scraper: Optional[WebScraperTools] = None
+_history_storage: Optional[FirestoreStorage] = None
 
 
 def _extract_and_explain_proper_nouns(title: str) -> str:
@@ -98,8 +100,11 @@ def _extract_and_explain_proper_nouns(title: str) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """アプリケーションのライフサイクル管理"""
-    global _scraper
+    global _scraper, _history_storage
     _scraper = WebScraperTools(headless=True)
+    _history_storage = FirestoreStorage(
+        collection_name="choral_web_scraper", document_id="discord_history"
+    )
     yield
     if _scraper:
         await _scraper.close()
@@ -191,10 +196,20 @@ async def fetch_article(request: ArticleRequest):
 
 @app.post("/api/discord", response_model=DiscordNotificationResponse)
 async def send_discord_notification(request: DiscordNotificationRequest):
-    """Discord通知を送信（固有名詞解説付き）"""
+    """Discord通知を送信（固有名詞解説付き、重複チェックあり）"""
     webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
     if not webhook_url:
         raise HTTPException(status_code=500, detail="DISCORD_WEBHOOK_URL is not set")
+
+    # 重複チェック
+    history = []
+    if _history_storage:
+        history = _history_storage.load_history()
+        if request.url in history:
+            print(f"Skipping already sent: {request.url}")
+            return DiscordNotificationResponse(
+                status="already_sent", message=f"Already sent: {request.title}"
+            )
 
     # 固有名詞の解説を取得
     explanations = _extract_and_explain_proper_nouns(request.title)
@@ -217,6 +232,13 @@ async def send_discord_notification(request: DiscordNotificationRequest):
     try:
         response = requests.post(webhook_url, json={"content": message})
         response.raise_for_status()
+
+        # 送信成功したらFirestoreに保存
+        if _history_storage:
+            history.append(request.url)
+            _history_storage.save_history(history, max_items=500)
+            print(f"Saved to history: {request.url}")
+
         return DiscordNotificationResponse(
             status="success", message=f"Sent notification for: {request.title}"
         )
