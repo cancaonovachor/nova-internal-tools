@@ -65,6 +65,7 @@ def format_discord_message(article: dict) -> str:
 async def process_sites(config, mode: str, storage, ignore_history: bool):
     """全サイトを処理"""
     max_history_items = config["settings"]["max_history_items"]
+    article_age_days = config["settings"].get("article_age_days", 3)
 
     if ignore_history:
         history = []
@@ -82,7 +83,7 @@ async def process_sites(config, mode: str, storage, ignore_history: bool):
             console.print(f"[cyan]Scraping: {site['name']}...[/cyan]")
 
             try:
-                articles = await scraper.scrape_site(site)
+                articles = await scraper.scrape_site(site, article_age_days)
                 console.print(f"  Found {len(articles)} articles")
 
                 for article in articles:

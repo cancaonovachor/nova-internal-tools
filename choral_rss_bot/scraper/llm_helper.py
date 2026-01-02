@@ -27,7 +27,7 @@ def _truncate_html(html: str, max_chars: int = 50000) -> str:
 
 
 def extract_articles_from_html(
-    html: str, site_name: str, max_articles: int = 5
+    html: str, site_name: str, max_articles: int = 5, article_age_days: int = 3
 ) -> list[dict]:
     """
     HTMLから記事リストを抽出
@@ -36,13 +36,19 @@ def extract_articles_from_html(
         html: ページのHTML
         site_name: サイト名（コンテキスト用）
         max_articles: 最大記事数
+        article_age_days: 記事の最大経過日数
 
     Returns:
         list[dict]: 記事リスト [{"title": str, "url": str, "date": str}, ...]
     """
+    from datetime import datetime
+
+    today = datetime.now().strftime("%Y/%m/%d")
     client = _get_client()
 
     prompt = f"""以下は「{site_name}」のHTMLです。新着記事・お知らせのリストを抽出してください。
+
+本日は{today}です。
 
 HTML:
 {_truncate_html(html)}
@@ -51,6 +57,7 @@ HTML:
 - 新着情報、お知らせ、ニュースなどのリンク
 - イベント告知、更新情報
 - 記事タイトルとURL
+- 直近{article_age_days}日以内に公開された記事のみ
 
 【除外対象】
 - ナビゲーションメニュー（ホーム、会社概要など）
@@ -58,6 +65,7 @@ HTML:
 - SNSリンク（Twitter、Facebook等）
 - 広告、バナー
 - カテゴリ一覧、アーカイブリンク
+- {article_age_days}日より前の古い記事
 
 【出力形式】JSON:
 {{

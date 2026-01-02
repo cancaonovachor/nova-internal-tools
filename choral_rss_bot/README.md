@@ -44,7 +44,7 @@ cp .env.example .env
 ## 使い方
 
 ### Web Scraper Agent (Google ADK)
-Google ADKを使用したAIエージェントで、合唱関連サイト（日本合唱指揮者協会、パナムジカ）をスクレイピングし、記事を要約してDiscordに通知します。
+Google ADKを使用したAIエージェントで、合唱関連サイト（日本合唱連盟、パナムジカ）をスクレイピングし、記事を要約してDiscordに通知します。
 
 #### Cloud Run APIを使用する場合（推奨）
 デプロイ済みのCloud Run APIを使用してスクレイピングを実行します。

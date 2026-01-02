@@ -56,12 +56,13 @@ class WebScraperTools:
         finally:
             await page.close()
 
-    async def scrape_site(self, site_config: dict) -> list[dict]:
+    async def scrape_site(self, site_config: dict, article_age_days: int = 3) -> list[dict]:
         """
         サイトをスクレイピングして記事リストを取得
 
         Args:
             site_config: サイト設定 {"id", "name", "url", "max_articles"}
+            article_age_days: 記事の最大経過日数
 
         Returns:
             list[dict]: 処理済み記事リスト
@@ -77,7 +78,7 @@ class WebScraperTools:
             print(f"Failed to fetch {site_url}: {e}")
             return []
 
-        articles = extract_articles_from_html(html, site_name, max_articles)
+        articles = extract_articles_from_html(html, site_name, max_articles, article_age_days)
 
         if not articles:
             print(f"No articles found on {site_name}")

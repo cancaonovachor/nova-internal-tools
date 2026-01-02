@@ -80,7 +80,7 @@ rss/llm_helper.py        # 固有名詞抽出 (参考・流用)
 ```yaml
 sites:
   - id: jcanet
-    name: 日本合唱指揮者協会
+    name: 日本合唱連盟
     url: https://jcanet.or.jp/index.html
     max_articles: 5
 

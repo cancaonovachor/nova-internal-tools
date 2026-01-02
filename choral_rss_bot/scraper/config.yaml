@@ -11,4 +11,4 @@ sites:
 
 settings:
   max_history_items: 500
-  article_age_days: 30
+  article_age_days: 3
