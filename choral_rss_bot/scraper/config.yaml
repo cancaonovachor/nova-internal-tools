@@ -19,6 +19,11 @@ sites:
     url: https://choralnet.org/blog
     max_articles: 3
 
+  - id: ifcm-news
+    name: IFCM News
+    url: https://www.ifcm.net/news
+    max_articles: 3
+
 settings:
   max_history_items: 500
   article_age_days: 3
