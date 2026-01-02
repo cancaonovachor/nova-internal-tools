@@ -9,6 +9,16 @@ sites:
     url: https://panamusica.co.jp/ja/info/
     max_articles: 3
 
+  - id: choralnet-news
+    name: ChoralNet News
+    url: https://choralnet.org/acda-news
+    max_articles: 3
+
+  - id: choralnet-blog
+    name: ChoralNet Blog
+    url: https://choralnet.org/blog
+    max_articles: 3
+
 settings:
   max_history_items: 500
   article_age_days: 3
