@@ -1,12 +1,19 @@
-"""Playwrightを使用したWebスクレイピングツール"""
+"""Playwrightを使用したWebスクレイピングツール（LLM統合版）"""
 
 from typing import Optional
 
 from playwright.async_api import Browser, async_playwright
 
+from scraper.llm_helper import (
+    extract_articles_from_html,
+    extract_and_explain_proper_nouns,
+    extract_content_from_html,
+    summarize_article,
+)
+
 
 class WebScraperTools:
-    """Playwrightベースのスクレイピングツール"""
+    """Playwrightベースのスクレイピングツール（LLM統合）"""
 
     def __init__(self, headless: bool = True):
         self.headless = headless
@@ -29,182 +36,90 @@ class WebScraperTools:
             await self._playwright.stop()
             self._playwright = None
 
-    async def fetch_jcanet_news(self) -> dict:
-        """日本合唱指揮者協会(jcanet.or.jp)の新着情報を取得"""
-        url = "https://jcanet.or.jp/index.html"
+    async def fetch_page_html(self, url: str) -> str:
+        """
+        ページのHTMLを取得
+
+        Args:
+            url: 取得するURL
+
+        Returns:
+            str: ページのHTML
+        """
+        browser = await self._ensure_browser()
+        page = await browser.new_page()
+
         try:
-            browser = await self._ensure_browser()
-            page = await browser.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_timeout(3000)
+            return await page.content()
+        finally:
+            await page.close()
 
-            try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                await page.wait_for_timeout(3000)
+    async def scrape_site(self, site_config: dict) -> list[dict]:
+        """
+        サイトをスクレイピングして記事リストを取得
 
-                news_items = await page.evaluate("""
-                    () => {
-                        const results = [];
-                        const seen = new Set();
-                        const links = document.querySelectorAll('a');
+        Args:
+            site_config: サイト設定 {"id", "name", "url", "max_articles"}
 
-                        for (const link of links) {
-                            const href = link.href;
-                            const text = link.textContent.trim();
-                            if (!href || !text || seen.has(href)) continue;
-                            if (href.includes('#') && !href.includes('.htm') && !href.includes('.pdf')) continue;
-                            if (text.length < 5) continue;
+        Returns:
+            list[dict]: 処理済み記事リスト
+            [{"title", "url", "date", "content", "summary", "source", "explanations"}, ...]
+        """
+        site_name = site_config["name"]
+        site_url = site_config["url"]
+        max_articles = site_config.get("max_articles", 5)
 
-                            seen.add(href);
-                            results.push({
-                                date: '',
-                                title: text.substring(0, 200),
-                                url: href
-                            });
-                        }
-                        return results.slice(0, 15);
-                    }
-                """)
-
-                return {
-                    "status": "success",
-                    "articles": news_items,
-                    "source": "日本合唱指揮者協会",
-                }
-            finally:
-                await page.close()
-
+        try:
+            html = await self.fetch_page_html(site_url)
         except Exception as e:
-            return {
-                "status": "error",
-                "error_message": str(e),
-                "articles": [],
-                "source": "日本合唱指揮者協会",
-            }
+            print(f"Failed to fetch {site_url}: {e}")
+            return []
 
-    async def fetch_panamusica_news(self) -> dict:
-        """パナムジカ(panamusica.co.jp)のお知らせを取得"""
-        url = "https://panamusica.co.jp/ja/info/"
-        try:
-            browser = await self._ensure_browser()
-            page = await browser.new_page()
+        articles = extract_articles_from_html(html, site_name, max_articles)
 
-            try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                await page.wait_for_timeout(3000)
+        if not articles:
+            print(f"No articles found on {site_name}")
+            return []
 
-                articles = await page.evaluate("""
-                    () => {
-                        const results = [];
-                        const seen = new Set();
-                        const links = document.querySelectorAll('a');
+        results = []
+        for article in articles:
+            title = article.get("title", "")
+            url = article.get("url", "")
+            date = article.get("date", "")
 
-                        for (const link of links) {
-                            const href = link.href;
-                            const text = link.textContent.trim();
-                            if (!href || !text) continue;
-                            if (!href.includes('/info/archives/')) continue;
-                            if (!href.endsWith('.html')) continue;
-                            if (seen.has(href)) continue;
-
-                            const dateMatch = href.match(/\\/archives\\/(\\d{4})\\/(\\d{2})\\//);
-                            const dateText = dateMatch ? dateMatch[1] + '/' + dateMatch[2] : '';
-
-                            seen.add(href);
-                            results.push({
-                                date: dateText,
-                                title: text.substring(0, 200),
-                                url: href
-                            });
-                        }
-                        return results.slice(0, 10);
-                    }
-                """)
-
-                return {
-                    "status": "success",
-                    "articles": articles,
-                    "source": "パナムジカ",
-                }
-            finally:
-                await page.close()
-
-        except Exception as e:
-            return {
-                "status": "error",
-                "error_message": str(e),
-                "articles": [],
-                "source": "パナムジカ",
-            }
-
-    async def fetch_article_content(self, url: str) -> dict:
-        """記事ページに遷移してコンテンツを取得"""
-        try:
-            browser = await self._ensure_browser()
-            page = await browser.new_page()
+            if not url:
+                continue
 
             try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                await page.wait_for_timeout(3000)
+                article_html = await self.fetch_page_html(url)
+                content_data = extract_content_from_html(article_html, url)
+                content = content_data.get("content", "")
 
-                result = await page.evaluate("""
-                    () => {
-                        ['script', 'style', 'nav', 'header', 'footer', 'iframe', 'noscript',
-                         '.sidebar', '#sidebar', '.navigation', '.menu', '.advertisement', '.ads'
-                        ].forEach(sel => {
-                            document.querySelectorAll(sel).forEach(el => el.remove());
-                        });
+                if not title:
+                    title = content_data.get("title", "")
 
-                        let title = '';
-                        const h1 = document.querySelector('h1');
-                        if (h1) {
-                            title = h1.textContent.trim();
-                        } else {
-                            const h2 = document.querySelector('h2');
-                            title = h2 ? h2.textContent.trim() : (document.title || '');
-                        }
+                summary = summarize_article(title, content)
+                noun_result = extract_and_explain_proper_nouns(title)
 
-                        const selectors = ['.entry-content', '.post-content', '.article-content',
-                                          'article', 'main', '.content', '#content', '#main'];
-                        let content = '';
-                        for (const selector of selectors) {
-                            const el = document.querySelector(selector);
-                            if (el) {
-                                content = el.innerText.trim();
-                                if (content.length > 50) break;
-                            }
-                        }
-                        if (content.length < 50) {
-                            content = document.body ? document.body.innerText.trim() : '';
-                        }
-
-                        content = content.replace(/\\n{3,}/g, '\\n\\n').trim();
-
-                        return {
-                            title: title.substring(0, 500),
-                            content: content.substring(0, 5000)
-                        };
-                    }
-                """)
-
-                return {
-                    "status": "success",
+                results.append({
+                    "title": title,
                     "url": url,
-                    "title": result["title"],
-                    "content": result["content"],
-                }
-            finally:
-                await page.close()
+                    "date": date,
+                    "content": content,
+                    "summary": summary,
+                    "source": site_name,
+                    "explanations": noun_result.get("explanations", ""),
+                })
 
-        except Exception as e:
-            return {
-                "status": "error",
-                "url": url,
-                "title": "",
-                "content": "",
-                "error_message": str(e),
-            }
+            except Exception as e:
+                print(f"Failed to process article {url}: {e}")
+                continue
+
+        return results
 
 
-# シングルトンインスタンス
 _scraper_instance: Optional[WebScraperTools] = None
 
 
@@ -216,22 +131,10 @@ def _get_scraper() -> WebScraperTools:
     return _scraper_instance
 
 
-async def fetch_jcanet_news() -> dict:
-    """日本合唱指揮者協会(jcanet.or.jp)の新着情報を取得する。"""
+async def scrape_site(site_config: dict) -> list[dict]:
+    """サイトをスクレイピング"""
     scraper = _get_scraper()
-    return await scraper.fetch_jcanet_news()
-
-
-async def fetch_panamusica_news() -> dict:
-    """パナムジカ(panamusica.co.jp)のお知らせを取得する。"""
-    scraper = _get_scraper()
-    return await scraper.fetch_panamusica_news()
-
-
-async def fetch_article_content(url: str) -> dict:
-    """指定された記事URLからコンテンツを取得する。"""
-    scraper = _get_scraper()
-    return await scraper.fetch_article_content(url)
+    return await scraper.scrape_site(site_config)
 
 
 async def cleanup_scraper():
