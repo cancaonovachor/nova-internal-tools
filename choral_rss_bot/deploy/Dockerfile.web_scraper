@@ -1,4 +1,4 @@
-# Playwright with Chromium for web scraping API service
+# Playwright with Chromium for web scraping (Cloud Run Jobs)
 FROM mcr.microsoft.com/playwright/python:v1.57.0-noble
 
 # Install uv
@@ -11,7 +11,7 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY uv.lock .
 
-# Install dependencies (including scraper extras)
+# Install dependencies
 RUN uv sync --frozen --no-install-project --extra scraper || uv sync --no-install-project --extra scraper
 
 # Copy source code
@@ -20,10 +20,6 @@ COPY . .
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV PORT=8080
 
-# Expose port
-EXPOSE 8080
-
-# Entrypoint for scraper API service
-CMD ["uv", "run", "python", "-m", "scraper.api"]
+# Entrypoint for Cloud Run Jobs
+CMD ["uv", "run", "python", "-m", "scraper.main", "--mode", "discord"]

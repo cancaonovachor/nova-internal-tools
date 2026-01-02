@@ -1,154 +1,154 @@
-"""Webスクレイピングエージェントのメインエントリーポイント"""
+"""Webスクレイパーメイン（LLM統合版）"""
 
 import argparse
 import asyncio
 import os
+import time
+from pathlib import Path
 
+import yaml
 from dotenv import load_dotenv
-from google.adk.runners import RunConfig, Runner
-from google.adk.sessions import InMemorySessionService
-from google.genai import types
 from rich.console import Console
 
+from common.discord import send_discord_message
 from common.storage import FirestoreStorage, JsonFileStorage
-from scraper.agent import clear_processed_urls, get_processed_urls, root_agent
-from scraper.tools import cleanup_scraper
+from scraper.tools import WebScraperTools
 
 load_dotenv()
 console = Console()
 
 
-def get_storage(use_firestore: bool = False):
+def load_config():
+    """設定ファイルを読み込む"""
+    config_path = Path(__file__).parent / "config.yaml"
+    with open(config_path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def get_storage(config, ignore_history: bool):
     """ストレージバックエンドを取得"""
+    if ignore_history:
+        return None
+
     is_cloud_run = (
         os.getenv("K_SERVICE") is not None or os.getenv("CLOUD_RUN_JOB") is not None
     )
 
-    if use_firestore or is_cloud_run:
-        console.print("[green]Using Firestore storage[/green]")
+    if is_cloud_run:
+        console.print("[green]Running in Cloud Run environment. Using Firestore.[/green]")
         return FirestoreStorage(
-            collection_name="choral_web_scraper", document_id="history"
+            collection_name="choral_web_scraper", document_id="discord_history"
         )
     else:
-        console.print("[blue]Using local JSON storage[/blue]")
-        return JsonFileStorage("web_scraper_history.json")
+        console.print("[blue]Running locally. Using JsonFileStorage.[/blue]")
+        return JsonFileStorage("scraper_history.json")
 
 
-async def run_agent(mode: str = "local", ignore_history: bool = False):
-    """エージェントを実行"""
-    console.print(f"[bold cyan]Starting Web Scraper Agent in {mode} mode[/bold cyan]")
+def format_discord_message(article: dict) -> str:
+    """Discord用メッセージをフォーマット"""
+    title = article.get("title", "No Title")
+    url = article.get("url", "")
+    date = article.get("date", "")
+    summary = article.get("summary", "")
+    source = article.get("source", "")
+    explanations = article.get("explanations", "")
 
-    # 処理済みURLをクリア
-    clear_processed_urls()
+    date_section = f"📆公開日時: {date}\n" if date else ""
+    summary_section = f"\n📝 要約\n{summary}" if summary else ""
+    explanation_section = f"\n\n📚 用語解説\n{explanations}" if explanations else ""
 
-    storage = None if ignore_history else get_storage(use_firestore=(mode == "discord"))
+    return f"""📰 『{source}』の新着記事です！
+{date_section}📄タイトル: {title}
+🔗リンク: {url}{summary_section}{explanation_section}"""
 
-    processed_urls = set()
-    history = []
-    if storage and not ignore_history:
-        history = storage.load_history()
-        processed_urls = set(history)
-        console.print(f"[blue]Loaded {len(processed_urls)} processed URLs from history[/blue]")
 
-    session_service = InMemorySessionService()
-    session = await session_service.create_session(
-        app_name="choral_news_scraper",
-        user_id="system",
-    )
+async def process_sites(config, mode: str, storage, ignore_history: bool):
+    """全サイトを処理"""
+    max_history_items = config["settings"]["max_history_items"]
 
-    runner = Runner(
-        agent=root_agent,
-        app_name="choral_news_scraper",
-        session_service=session_service,
-    )
-
-    run_config = RunConfig(max_llm_calls=20)
-
-    if mode == "local":
-        prompt = """以下のサイトから新着情報を取得して表示してください（Discord通知は送信しないでください）：
-1. jcanet.or.jp（日本合唱指揮者協会）の新着情報
-2. panamusica.co.jp（パナムジカ）のお知らせ
-
-各記事について：
-- タイトル
-- 公開日
-- URL
-- 要約（3-4文程度）
-
-を表示してください。最新3件程度で十分です。"""
+    if ignore_history:
+        history = []
+        processed_links = set()
+        console.print("[yellow]Ignoring history file...[/yellow]")
     else:
-        prompt = """以下のサイトから新着情報を収集し、Discordに通知してください：
-1. jcanet.or.jp（日本合唱指揮者協会）の新着情報
-2. panamusica.co.jp（パナムジカ）のお知らせ
+        history = storage.load_history() if storage else []
+        processed_links = set(history)
 
-各記事について、内容を取得して日本語で要約し、Discordに通知してください。
-最新3件程度を処理してください。"""
-
-    if processed_urls:
-        prompt += f"\n\n注意：以下のURLは既に処理済みなのでスキップしてください：\n" + "\n".join(
-            list(processed_urls)[:20]
-        )
+    new_links = []
+    scraper = WebScraperTools(headless=True)
 
     try:
-        console.print("[yellow]Running agent...[/yellow]")
-        content = types.Content(
-            role="user", parts=[types.Part.from_text(text=prompt)]
-        )
+        for site in config["sites"]:
+            console.print(f"[cyan]Scraping: {site['name']}...[/cyan]")
 
-        async for event in runner.run_async(
-            user_id="system",
-            session_id=session.id,
-            new_message=content,
-            run_config=run_config,
-        ):
-            if hasattr(event, "content") and event.content:
-                if hasattr(event.content, "parts"):
-                    for part in event.content.parts:
-                        if hasattr(part, "function_call") and part.function_call:
-                            fc = part.function_call
-                            console.print(f"[cyan]Calling: {fc.name}[/cyan]")
-                        if hasattr(part, "text") and part.text:
-                            console.print(part.text)
+            try:
+                articles = await scraper.scrape_site(site)
+                console.print(f"  Found {len(articles)} articles")
 
-        console.print("[green]Agent execution completed[/green]")
+                for article in articles:
+                    url = article.get("url", "")
 
-        # 処理済みURLを履歴に保存
-        new_urls = get_processed_urls()
-        if new_urls and storage and not ignore_history:
-            for url in new_urls:
-                if url not in history:
-                    history.append(url)
-            storage.save_history(history, max_items=500)
-            console.print(f"[green]Saved {len(new_urls)} new URLs to history[/green]")
+                    if not url:
+                        continue
 
-    except Exception as e:
-        console.print(f"[red]Error running agent: {e}[/red]")
-        import traceback
-        traceback.print_exc()
+                    if url in processed_links:
+                        if mode == "local":
+                            console.print(f"  [dim]Skipping (already sent): {article['title'][:50]}...[/dim]")
+                        continue
+
+                    message = format_discord_message(article)
+
+                    if mode == "local":
+                        console.print("\n" + "=" * 50)
+                        console.print(message)
+                        console.print("=" * 50 + "\n")
+                    else:
+                        success = send_discord_message(message)
+                        if success:
+                            console.print(f"  [green]Sent:[/green] {article['title'][:50]}...")
+                            processed_links.add(url)
+                            new_links.append(url)
+                            history.append(url)
+                            if storage and not ignore_history:
+                                storage.save_history(history, max_items=max_history_items)
+                            time.sleep(1)
+
+            except Exception as e:
+                console.print(f"  [red]Error scraping {site['name']}: {e}[/red]")
+
     finally:
-        await cleanup_scraper()
+        await scraper.close()
+
+    return new_links
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Web Scraper Agent")
+    parser = argparse.ArgumentParser(description="Choral Web Scraper")
     parser.add_argument(
         "--mode",
         choices=["local", "discord"],
         default="local",
-        help="Execution mode: 'local' (display only) or 'discord' (send notifications)",
+        help="Execution mode: 'local' or 'discord'",
     )
     parser.add_argument(
         "--ignore-history",
         action="store_true",
-        help="Ignore history and process all items",
+        help="Ignore history file and process all items",
     )
     args = parser.parse_args()
 
-    console.print("[bold]Web Scraper Agent[/bold]")
-    console.print(f"Mode: {args.mode}")
-    console.print("")
+    console.print(f"[bold cyan]Starting Choral Web Scraper in {args.mode} mode[/bold cyan]")
 
-    asyncio.run(run_agent(mode=args.mode, ignore_history=args.ignore_history))
+    config = load_config()
+    storage = get_storage(config, args.ignore_history)
+
+    new_links = asyncio.run(process_sites(config, args.mode, storage, args.ignore_history))
+
+    if args.mode != "local":
+        if new_links:
+            console.print(f"[green]Completed: {len(new_links)} new items processed.[/green]")
+        else:
+            console.print("No new items found.")
 
 
 if __name__ == "__main__":
