@@ -9,10 +9,11 @@ WORKDIR /app
 
 # Copy dependency files
 COPY pyproject.toml .
-COPY uv.lock .
 
-# Install dependencies
-RUN uv sync --frozen --no-install-project --extra scraper || uv sync --no-install-project --extra scraper
+# Create virtual environment and install dependencies
+RUN uv venv /app/.venv && \
+    . /app/.venv/bin/activate && \
+    uv pip install playwright pyyaml python-dotenv rich google-genai requests google-cloud-firestore
 
 # Copy source code
 COPY . .
@@ -20,6 +21,8 @@ COPY . .
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Entrypoint for Cloud Run Jobs
-CMD ["uv", "run", "python", "-m", "scraper.main", "--mode", "discord"]
+CMD ["python", "-m", "scraper.main", "--mode", "discord"]
