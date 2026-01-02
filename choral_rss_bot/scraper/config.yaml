@@ -1,13 +1,13 @@
 sites:
   - id: jcanet
-    name: 日本合唱指揮者協会
+    name: 日本合唱連盟
     url: https://jcanet.or.jp/index.html
-    max_articles: 5
+    max_articles: 3
 
   - id: panamusica
     name: パナムジカ
     url: https://panamusica.co.jp/ja/info/
-    max_articles: 5
+    max_articles: 3
 
 settings:
   max_history_items: 500
