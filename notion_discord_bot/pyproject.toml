@@ -1,0 +1,17 @@
+[project]
+name = "notion-discord-bot"
+version = "0.1.0"
+description = "Receive Notion webhooks and forward them to Discord."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-dotenv>=1.0.1",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+pubsub = [
+    "google-cloud-pubsub>=2.23.0",
+]
