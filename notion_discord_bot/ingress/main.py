@@ -1,16 +1,12 @@
 import json
 import logging
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
-from common.discord_format import format_event
-from common.discord_sender import FileDiscordSender
 from common.signature import verify_notion_signature
-from receiver.notion_client import NotionClient, enrich_event
-from receiver.publisher import StdoutLogPublisher
+from common.task_enqueuer import create_enqueuer
 
 load_dotenv()
 
@@ -18,34 +14,20 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s - %(message)s",
 )
-logger = logging.getLogger("notion_discord_bot.receiver")
+logger = logging.getLogger("notion_discord_bot.ingress")
 
-LOG_PATH = Path(os.getenv("EVENT_LOG_PATH", "log.txt"))
-DISCORD_OUTPUT_PATH = Path(os.getenv("DISCORD_OUTPUT_PATH", "discord.txt"))
 VERIFICATION_TOKEN = os.getenv("NOTION_VERIFICATION_TOKEN")
-NOTION_API_KEY = os.getenv("NOTION_API_KEY")
+ALLOWED_EVENTS = {
+    e.strip()
+    for e in os.getenv(
+        "NOTION_ALLOWED_EVENTS",
+        "page.created,page.content_updated,comment.created",
+    ).split(",")
+    if e.strip()
+}
 
-app = FastAPI(title="notion-discord-bot receiver")
-publisher = StdoutLogPublisher(log_path=LOG_PATH)
-discord_sender = FileDiscordSender(output_path=DISCORD_OUTPUT_PATH)
-notion_client = NotionClient(api_key=NOTION_API_KEY) if NOTION_API_KEY else None
-
-
-def _enrich_and_publish(payload: dict) -> None:
-    if notion_client is None:
-        enriched = {"event": payload, "enriched": False}
-    else:
-        try:
-            enriched = enrich_event(payload, notion_client)
-        except Exception:
-            logger.exception("enrichment crashed; publishing raw event")
-            enriched = {"event": payload, "enriched": False}
-
-    publisher.publish(enriched)
-    try:
-        discord_sender.send(format_event(enriched))
-    except Exception:
-        logger.exception("discord formatting/sending failed")
+app = FastAPI(title="notion-discord-bot ingress")
+enqueuer = create_enqueuer()
 
 
 @app.get("/healthz")
@@ -84,5 +66,21 @@ async def notion_webhook(
             "NOTION_VERIFICATION_TOKEN is not set; skipping signature verification"
         )
 
-    background_tasks.add_task(_enrich_and_publish, payload)
-    return {"status": "accepted"}
+    event_type = payload.get("type") if isinstance(payload, dict) else None
+    if event_type not in ALLOWED_EVENTS:
+        logger.info("filtered event_type=%s", event_type)
+        return {"status": "filtered", "event_type": event_type}
+
+    event_id = payload.get("id") if isinstance(payload, dict) else None
+    task_id = f"notion-{event_id}" if event_id else None
+
+    # Notion に素早く 2xx を返すため enqueue は BackgroundTask へ。
+    background_tasks.add_task(_enqueue_safe, payload, task_id)
+    return {"status": "accepted", "event_type": event_type, "task_id": task_id}
+
+
+def _enqueue_safe(payload: dict, task_id: str | None) -> None:
+    try:
+        enqueuer.enqueue(payload, task_id)
+    except Exception:
+        logger.exception("enqueue failed (task_id=%s)", task_id)
