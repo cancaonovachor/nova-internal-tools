@@ -5,7 +5,6 @@ from typing import Any, Protocol
 
 import requests
 
-
 logger = logging.getLogger(__name__)
 
 

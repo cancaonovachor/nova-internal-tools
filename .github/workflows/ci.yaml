@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    name: Test & Lint (${{ matrix.tool }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tool:
+          - choral_rss_bot
+          - notion_discord_bot
+          - gcp_alert_discord_bot
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            tool:
+              - '${{ matrix.tool }}/**'
+              - '.github/workflows/ci.yaml'
+
+      - name: Install uv
+        if: steps.filter.outputs.tool == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: '${{ matrix.tool }}/uv.lock'
+
+      - name: Set up Python
+        if: steps.filter.outputs.tool == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        if: steps.filter.outputs.tool == 'true'
+        working-directory: ${{ matrix.tool }}
+        run: uv sync
+
+      - name: Ruff check
+        if: steps.filter.outputs.tool == 'true'
+        working-directory: ${{ matrix.tool }}
+        run: uv run ruff check .
+
+      - name: Pytest
+        if: steps.filter.outputs.tool == 'true'
+        working-directory: ${{ matrix.tool }}
+        run: uv run pytest -v

@@ -1,6 +1,5 @@
 from typing import Any
 
-
 EVENT_ACTION = {
     "page.created": "を作成",
     "page.content_updated": "の本文を編集",

@@ -1,14 +1,12 @@
 import base64
 import json
 import logging
-import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 
 from common.discord_sender import create_sender
 from common.formatter import format_pubsub_message
-
 
 load_dotenv()
 

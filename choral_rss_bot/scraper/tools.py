@@ -5,8 +5,8 @@ from typing import Optional
 from playwright.async_api import Browser, async_playwright
 
 from scraper.llm_helper import (
-    extract_articles_from_html,
     extract_and_explain_proper_nouns,
+    extract_articles_from_html,
     extract_content_from_html,
     summarize_article,
 )
