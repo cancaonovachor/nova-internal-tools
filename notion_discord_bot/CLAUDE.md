@@ -107,6 +107,16 @@ state backend は **GCS (`gs://starlit-road-203901-tfstate`, prefix `notion-disc
 - sender (`DiscordSender` protocol) の `send()` も `dict` を受ける。`FileDiscordSender` はローカル用に `render_payload_as_text` で読める形に展開してファイルに書く
 - embed field の制限: name 256 字 / value 1024 字 / fields 25 個。超える場合 truncate かスライスする
 
+### 9. ログ severity 設計 (Error Reporting / アラート連動)
+`gcp_alert_discord_bot` 側の alert policy が `severity>=ERROR AND NOT httpRequest.status:*` で拾う前提なので、**WARNING と ERROR を意図的に使い分けている**:
+
+- **NotionClient**: `urllib3.Retry` アダプタで transient 失敗 (connect/read timeout, 429, 5xx) を 3 回まで自動リトライ。リトライ中の urllib3 ログは WARNING なので Error Reporting 非対象
+- **`enrich_event`** の except は `requests.RequestException` で広く拾って `logger.warning`。リトライ枯渇しても traceback を出さない (raw event で Discord 送信継続する fallback あり)
+- **`WebhookDiscordSender`**: 429 は `Retry-After` 尊重、5xx は指数バックオフで 3 回まで in-process リトライ
+- **Discord 送信失敗時の severity 切替**: `worker/main.py` で `X-CloudTasks-TaskRetryCount` ヘッダを見て、`CLOUD_TASKS_ERROR_RETRY_THRESHOLD` (既定 4 = queue の max_attempts-1) 未満は `logger.warning`、最終試行のみ `logger.exception`。これにより Cloud Tasks がリトライで救済したケースは Error Reporting に上がらない
+
+新しい例外経路を追加する時はこの方針を踏襲: "リトライで救われる見込み" は warning、"本当に捨てる" 最終段階のみ exception。
+
 ## リポジトリ内の主な場所
 
 | パス | 役割 |
