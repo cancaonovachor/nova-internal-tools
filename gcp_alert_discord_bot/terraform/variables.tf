@@ -20,3 +20,9 @@ variable "create_monitoring_channel" {
   default     = true
   description = "Cloud Monitoring の Pub/Sub 通知チャンネルを作成するか"
 }
+
+variable "cloud_run_alert_enabled" {
+  type        = bool
+  default     = true
+  description = "Cloud Run services / Cloud Run Jobs の ERROR ログを検出する alert policy を作成するか (gcp-alert-discord-bot 自身は除外)"
+}

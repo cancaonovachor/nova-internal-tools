@@ -23,3 +23,23 @@ output "notification_channel_id" {
   value       = try(google_monitoring_notification_channel.pubsub[0].id, null)
   description = "Alert policy に紐付ける notification channel の resource id"
 }
+
+output "cloud_run_alert_policy_id" {
+  value       = try(google_monitoring_alert_policy.cloud_run_error[0].id, null)
+  description = "Cloud Run services の ERROR log を検出する alert policy id"
+}
+
+output "cloud_run_job_alert_policy_id" {
+  value       = try(google_monitoring_alert_policy.cloud_run_job_error[0].id, null)
+  description = "Cloud Run Jobs の ERROR log を検出する alert policy id"
+}
+
+output "email_notification_channel_id" {
+  value       = try(google_monitoring_notification_channel.email[0].id, null)
+  description = "self-alert 用の email 通知チャネル id"
+}
+
+output "self_alert_policy_id" {
+  value       = try(google_monitoring_alert_policy.self_error[0].id, null)
+  description = "gcp-alert-discord-bot 自身の ERROR を検出する alert policy id"
+}

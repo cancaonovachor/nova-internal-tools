@@ -52,3 +52,24 @@ uv run uvicorn app.main:app --reload --port 8080
 - Python 3.12+ / uv / FastAPI
 - secrets は Secret Manager → Cloud Run env
 - ログは stdout (`logging.INFO`)。Cloud Run 側で拾える
+
+## 管理している Alert Policy (他ツール向け)
+
+このツールは Pub/Sub → Discord の「通知配信インフラ」も兼ねている。`terraform/main.tf` に他ツールのエラー監視用 alert policy をまとめて定義している:
+
+| Policy | 対象 | 通知先 |
+|---|---|---|
+| `cloud_run_error` | Cloud Run services (gcp-alert-discord-bot 除く) の `severity>=ERROR` | Discord (pubsub channel 経由) |
+| `cloud_run_job_error` | Cloud Run Jobs の `severity>=ERROR` | Discord |
+| `self_error` | gcp-alert-discord-bot 自身の `severity>=ERROR` | email (`local.self_alert_email`) |
+
+### フィルタ設計の注意点
+
+- **Cloud Run access log (5xx) の除外**: `NOT httpRequest.status:*` を付けてアプリログのみ拾う。Cloud Run は 5xx リクエストを severity=ERROR の access log として残すが、これは `httpRequest.status` フィールドを持つので除外できる。`logger.exception` 由来の traceback log は持たないので通る
+- **通知ループ防止**: `cloud_run_error` は `service_name!="gcp-alert-discord-bot"` で自身を除外必須。自身のエラーを Discord 経路に流すと、失敗した通知処理が再度 ERROR を出して無限ループする
+- **self_error → email**: 自身のエラーは別経路の email で受ける。email channel は初回 apply 後に GCP から verification メールが届くので受信者がリンクを踏む必要あり
+- **新規サービスは自動で拾う**: `cloud_run_error` は service_name の allow-list ではなく deny-list (自身のみ除外) なので、新しい Cloud Run service を deploy すれば自動で監視対象になる。ノイズが多ければ filter に exclusion を追加する方針
+
+### 連動する各ツール側の挙動
+
+alert が警報ループしないように、監視される側のツールでは「リトライで救える失敗」を `logger.exception` ではなく `logger.warning` に落としておく設計が推奨。例: `notion_discord_bot` worker は Cloud Tasks の `X-CloudTasks-TaskRetryCount` を見て最終試行のみ exception を呼ぶ。
