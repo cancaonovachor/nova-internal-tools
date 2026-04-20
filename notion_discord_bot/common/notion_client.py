@@ -2,12 +2,15 @@ import logging
 from typing import Any
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 logger = logging.getLogger(__name__)
 
 NOTION_VERSION = "2022-06-28"
 BASE_URL = "https://api.notion.com/v1"
+DEFAULT_TIMEOUT = 15
 
 
 class NotionClient:
@@ -19,19 +22,33 @@ class NotionClient:
                 "Notion-Version": notion_version,
             }
         )
+        retry = Retry(
+            total=3,
+            connect=3,
+            read=3,
+            status=3,
+            backoff_factor=0.5,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=frozenset(["GET"]),
+            respect_retry_after_header=True,
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        self._session.mount("https://", adapter)
+        self._session.mount("http://", adapter)
 
     def get_page(self, page_id: str) -> dict[str, Any]:
-        r = self._session.get(f"{BASE_URL}/pages/{page_id}", timeout=10)
+        r = self._session.get(f"{BASE_URL}/pages/{page_id}", timeout=DEFAULT_TIMEOUT)
         r.raise_for_status()
         return r.json()
 
     def get_user(self, user_id: str) -> dict[str, Any]:
-        r = self._session.get(f"{BASE_URL}/users/{user_id}", timeout=10)
+        r = self._session.get(f"{BASE_URL}/users/{user_id}", timeout=DEFAULT_TIMEOUT)
         r.raise_for_status()
         return r.json()
 
     def get_block(self, block_id: str) -> dict[str, Any]:
-        r = self._session.get(f"{BASE_URL}/blocks/{block_id}", timeout=10)
+        r = self._session.get(f"{BASE_URL}/blocks/{block_id}", timeout=DEFAULT_TIMEOUT)
         r.raise_for_status()
         return r.json()
 
@@ -157,7 +174,7 @@ def enrich_event(event: dict[str, Any], client: NotionClient) -> dict[str, Any]:
             page = client.get_page(page_id)
             enriched["page_title"] = extract_page_title(page)
             enriched["page_url"] = page.get("url")
-        except requests.HTTPError as e:
+        except requests.RequestException as e:
             logger.warning("failed to fetch page %s: %s", page_id, e)
 
     author_names: list[str | None] = []
@@ -168,7 +185,7 @@ def enrich_event(event: dict[str, Any], client: NotionClient) -> dict[str, Any]:
         try:
             u = client.get_user(uid)
             author_names.append(u.get("name"))
-        except requests.HTTPError as e:
+        except requests.RequestException as e:
             logger.warning("failed to fetch user %s: %s", uid, e)
     enriched["authors"] = author_names
 
@@ -189,7 +206,7 @@ def enrich_event(event: dict[str, Any], client: NotionClient) -> dict[str, Any]:
                     "text": extract_block_text(blk),
                 }
             )
-        except requests.HTTPError as e:
+        except requests.RequestException as e:
             logger.warning("failed to fetch block %s: %s", bid, e)
     enriched["updated_blocks"] = updated_blocks
 

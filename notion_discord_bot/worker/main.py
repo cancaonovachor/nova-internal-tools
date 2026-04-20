@@ -22,6 +22,12 @@ NOTION_API_KEY = os.getenv("NOTION_API_KEY")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 DISCORD_DELETION_WEBHOOK_URL = os.getenv("DISCORD_DELETION_WEBHOOK_URL")
 DISCORD_OUTPUT_PATH = Path(os.getenv("DISCORD_OUTPUT_PATH", "discord.txt"))
+# Cloud Tasks の retry_count がこの値未満のうちは失敗を warning 扱いにし、
+# Error Reporting への通知を抑止する。queue の max_attempts=5 に対し既定値 4 で、
+# 最後の 1 試行で失敗した場合だけ traceback 付き ERROR を残す。
+CLOUD_TASKS_ERROR_RETRY_THRESHOLD = int(
+    os.getenv("CLOUD_TASKS_ERROR_RETRY_THRESHOLD", "4")
+)
 
 
 def _build_default_sender() -> DiscordSender:
@@ -58,6 +64,8 @@ async def handle_notion_event(request: Request) -> dict:
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="invalid JSON")
 
+    retry_count = int(request.headers.get("X-CloudTasks-TaskRetryCount", "0"))
+
     event_type = (
         webhook_payload.get("type") if isinstance(webhook_payload, dict) else None
     )
@@ -79,7 +87,16 @@ async def handle_notion_event(request: Request) -> dict:
             deletion_sender.send(discord_payload)
     except Exception as e:
         # 5xx を返して Cloud Tasks のリトライに乗せる
-        logger.exception("discord send failed")
+        if retry_count < CLOUD_TASKS_ERROR_RETRY_THRESHOLD:
+            logger.warning(
+                "discord send failed (retry=%d, Cloud Tasks will retry): %s",
+                retry_count,
+                e,
+            )
+        else:
+            logger.exception(
+                "discord send failed repeatedly (retry=%d)", retry_count
+            )
         raise HTTPException(status_code=503, detail=f"discord send failed: {e}")
 
     return {"status": "ok"}

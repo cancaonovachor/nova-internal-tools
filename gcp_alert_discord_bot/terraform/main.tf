@@ -7,6 +7,10 @@ locals {
   image_name     = "gcp-alert-discord-bot"
   topic_name     = "gcp-alerts"
 
+  # gcp-alert-discord-bot 自身のエラーは Pub/Sub 経路だと通知ループになるので
+  # email で別経路に逃がす。空文字列にすると self-alert を無効化できる。
+  self_alert_email = "cancaonova.chorus@gmail.com"
+
   image_url = "${local.region}-docker.pkg.dev/${local.project_id}/${local.artifact_repo}/${local.image_name}:${var.image_tag}"
 
   required_apis = toset([
@@ -201,4 +205,124 @@ resource "google_monitoring_notification_channel" "pubsub" {
   labels = {
     topic = google_pubsub_topic.alerts.id
   }
+}
+
+# -------------------- Alert Policy: Cloud Run services ERROR logs --------------------
+# Cloud Run service の stderr/stdout に severity>=ERROR のログが出たら Pub/Sub
+# 通知チャネル経由で Discord に流す。
+#   - gcp-alert-discord-bot 自身は除外 (自分のエラーで自分に push して通知ループを防ぐ)
+#   - httpRequest.status を持つ行 (= Cloud Run access log の 5xx) は除外し、
+#     アプリケーションログ (logger.exception 等による traceback) のみ拾う
+resource "google_monitoring_alert_policy" "cloud_run_error" {
+  count = var.cloud_run_alert_enabled && var.create_monitoring_channel ? 1 : 0
+
+  project      = local.project_id
+  display_name = "Cloud Run: ERROR log"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Cloud Run service ERROR"
+    condition_matched_log {
+      filter = <<-EOT
+        resource.type="cloud_run_revision"
+        resource.labels.service_name!="gcp-alert-discord-bot"
+        severity>=ERROR
+        NOT httpRequest.status:*
+      EOT
+    }
+  }
+
+  # スパム抑止: 同じ policy の通知は 5 分に 1 回まで、30 分で自動クローズ
+  alert_strategy {
+    notification_rate_limit {
+      period = "300s"
+    }
+    auto_close = "1800s"
+  }
+
+  notification_channels = [google_monitoring_notification_channel.pubsub[0].id]
+
+  depends_on = [google_monitoring_notification_channel.pubsub]
+}
+
+# -------------------- Cloud Monitoring: Email 通知チャネル (self-alert 用) --------------------
+# gcp-alert-discord-bot 自身のエラーは Discord 経路を使えない (ループする) ため、
+# email を別経路として用意する。email 送信は GCP 側が verification メールを送り、
+# 受信側でリンクをクリックするまで verified にならない。verification 前でも apply
+# は成功するが、実際の通知は verified 後から届く。
+resource "google_monitoring_notification_channel" "email" {
+  count        = local.self_alert_email != "" ? 1 : 0
+  project      = local.project_id
+  display_name = "gcp-alert-bot ops email"
+  type         = "email"
+
+  labels = {
+    email_address = local.self_alert_email
+  }
+}
+
+# -------------------- Alert Policy: gcp-alert-discord-bot 自身の ERROR logs --------------------
+# Cloud Run alert policy (cloud_run_error) から除外した gcp-alert-discord-bot を
+# この policy で拾い、email チャネルに流す。
+resource "google_monitoring_alert_policy" "self_error" {
+  count = local.self_alert_email != "" ? 1 : 0
+
+  project      = local.project_id
+  display_name = "gcp-alert-discord-bot: self ERROR log"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "gcp-alert-discord-bot ERROR"
+    condition_matched_log {
+      filter = <<-EOT
+        resource.type="cloud_run_revision"
+        resource.labels.service_name="gcp-alert-discord-bot"
+        severity>=ERROR
+        NOT httpRequest.status:*
+      EOT
+    }
+  }
+
+  alert_strategy {
+    notification_rate_limit {
+      period = "300s"
+    }
+    auto_close = "1800s"
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email[0].id]
+
+  depends_on = [google_monitoring_notification_channel.email]
+}
+
+# -------------------- Alert Policy: Cloud Run Jobs ERROR logs --------------------
+# Cloud Run Jobs (choral_rss_bot など) のエラーも同じチャネルに流す。
+# Jobs は HTTP ではないので httpRequest.status のフィルタは不要。
+resource "google_monitoring_alert_policy" "cloud_run_job_error" {
+  count = var.cloud_run_alert_enabled && var.create_monitoring_channel ? 1 : 0
+
+  project      = local.project_id
+  display_name = "Cloud Run Jobs: ERROR log"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Cloud Run Jobs ERROR"
+    condition_matched_log {
+      filter = <<-EOT
+        resource.type="cloud_run_job"
+        severity>=ERROR
+      EOT
+    }
+  }
+
+  alert_strategy {
+    notification_rate_limit {
+      period = "300s"
+    }
+    auto_close = "1800s"
+  }
+
+  notification_channels = [google_monitoring_notification_channel.pubsub[0].id]
+
+  depends_on = [google_monitoring_notification_channel.pubsub]
 }
