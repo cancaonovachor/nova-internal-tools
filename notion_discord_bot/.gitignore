@@ -1,0 +1,6 @@
+.env
+log.txt
+discord.txt
+__pycache__/
+*.pyc
+.venv/
