@@ -1,0 +1,11 @@
+[project]
+name = "gcp-alert-discord-bot"
+version = "0.1.0"
+description = "Forward GCP Budget / Cloud Monitoring alerts to Discord via Pub/Sub push."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-dotenv>=1.0.1",
+    "requests>=2.31.0",
+]

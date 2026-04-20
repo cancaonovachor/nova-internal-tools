@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+discord.txt
+terraform/tfplan*
+terraform/terraform.tfvars
+terraform/.terraform/
+terraform/.terraform.lock.hcl
