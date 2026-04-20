@@ -21,7 +21,7 @@ ALLOWED_EVENTS = {
     e.strip()
     for e in os.getenv(
         "NOTION_ALLOWED_EVENTS",
-        "page.created,page.content_updated,comment.created",
+        "page.created,page.content_updated,page.properties_updated,page.deleted,comment.created",
     ).split(",")
     if e.strip()
 }
@@ -30,8 +30,8 @@ app = FastAPI(title="notion-discord-bot ingress")
 enqueuer = create_enqueuer()
 
 
-@app.get("/healthz")
-def healthz() -> dict:
+@app.get("/health")
+def health() -> dict:
     return {"status": "ok"}
 
 

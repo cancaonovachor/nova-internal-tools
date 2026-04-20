@@ -63,7 +63,7 @@ resource "google_secret_manager_secret_version" "api_key_v1" {
 
 resource "google_secret_manager_secret" "discord_webhook" {
   project   = var.project_id
-  secret_id = "discord-webhook-url"
+  secret_id = "notion-bot-discord-webhook"
   replication {
     auto {}
   }
@@ -76,6 +76,22 @@ resource "google_secret_manager_secret_version" "discord_webhook_v1" {
   count       = var.discord_webhook_url == "" ? 0 : 1
   secret      = google_secret_manager_secret.discord_webhook.id
   secret_data = var.discord_webhook_url
+}
+
+resource "google_secret_manager_secret" "discord_deletion_webhook" {
+  project   = var.project_id
+  secret_id = "notion-bot-discord-deletion-webhook"
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_secret_manager_secret_version" "discord_deletion_webhook_v1" {
+  count       = var.discord_deletion_webhook_url == "" ? 0 : 1
+  secret      = google_secret_manager_secret.discord_deletion_webhook.id
+  secret_data = var.discord_deletion_webhook_url
 }
 
 # -------------------- Service Accounts --------------------
@@ -148,6 +164,13 @@ resource "google_secret_manager_secret_iam_member" "worker_discord_reader" {
   member    = "serviceAccount:${google_service_account.worker.email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "worker_discord_deletion_reader" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.discord_deletion_webhook.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.worker.email}"
+}
+
 # -------------------- Cloud Run: worker --------------------
 resource "google_cloud_run_v2_service" "worker" {
   project  = var.project_id
@@ -200,6 +223,19 @@ resource "google_cloud_run_v2_service" "worker" {
           }
         }
       }
+
+      dynamic "env" {
+        for_each = var.discord_deletion_webhook_url == "" ? [] : [1]
+        content {
+          name = "DISCORD_DELETION_WEBHOOK_URL"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.discord_deletion_webhook.secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
     }
   }
 
@@ -208,6 +244,7 @@ resource "google_cloud_run_v2_service" "worker" {
     google_secret_manager_secret_version.api_key_v1,
     google_secret_manager_secret_iam_member.worker_api_key_reader,
     google_secret_manager_secret_iam_member.worker_discord_reader,
+    google_secret_manager_secret_iam_member.worker_discord_deletion_reader,
   ]
 }
 
@@ -246,7 +283,7 @@ resource "google_cloud_run_v2_service" "ingress" {
       resources {
         limits = {
           cpu    = "1"
-          memory = "256Mi"
+          memory = "512Mi"
         }
       }
 

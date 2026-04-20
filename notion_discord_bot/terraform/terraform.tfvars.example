@@ -10,6 +10,9 @@ notion_api_key = "ntn_xxx"
 # Discord Webhook URL（空文字のまま Apply すると worker は stdout ログだけに出す）
 discord_webhook_url = ""
 
+# page.deleted のみ追加で送る Discord webhook URL（空文字で無効）
+discord_deletion_webhook_url = ""
+
 # 初回は CLoud Run を先に作れないので、まず AR と secrets だけ作成し、
 # イメージを push した後に apply で Cloud Run を起動する。
 image_tag = "latest"

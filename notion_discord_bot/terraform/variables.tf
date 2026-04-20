@@ -51,9 +51,22 @@ variable "discord_webhook_url" {
   description = "空文字の場合 worker は FileDiscordSender を使う（stdout ログのみ）"
 }
 
+variable "discord_deletion_webhook_url" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "page.deleted のみ追加で送る Discord webhook URL。空文字で無効"
+}
+
 variable "notion_allowed_events" {
-  type        = list(string)
-  default     = ["page.created", "page.content_updated", "comment.created"]
+  type = list(string)
+  default = [
+    "page.created",
+    "page.content_updated",
+    "page.properties_updated",
+    "page.deleted",
+    "comment.created",
+  ]
   description = "ingress が worker に enqueue する Notion イベント種別"
 }
 
