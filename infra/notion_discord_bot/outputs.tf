@@ -19,9 +19,14 @@ output "image_url" {
 }
 
 output "artifact_registry_repo" {
-  value       = google_artifact_registry_repository.repo.id
+  value = module.artifact_registry.id
 }
 
 output "queue_name" {
-  value       = google_cloud_tasks_queue.queue.name
+  value = google_cloud_tasks_queue.queue.name
+}
+
+output "deployer_service_account_email" {
+  value       = module.github_deployer.email
+  description = "GitHub Actions deploy workflow に渡す SA email (GitHub secret WIF_SERVICE_ACCOUNT_NOTION)"
 }

@@ -16,7 +16,7 @@ output "image_url" {
 }
 
 output "artifact_registry_repo" {
-  value = google_artifact_registry_repository.repo.id
+  value = module.artifact_registry.id
 }
 
 output "notification_channel_id" {
@@ -42,4 +42,9 @@ output "email_notification_channel_id" {
 output "self_alert_policy_id" {
   value       = try(google_monitoring_alert_policy.self_error[0].id, null)
   description = "gcp-alert-discord-bot 自身の ERROR を検出する alert policy id"
+}
+
+output "deployer_service_account_email" {
+  value       = module.github_deployer.email
+  description = "GitHub Actions deploy workflow に渡す SA email (GitHub secret WIF_SERVICE_ACCOUNT_GCP_ALERT)"
 }
