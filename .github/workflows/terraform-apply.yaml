@@ -1,0 +1,62 @@
+name: Terraform Apply
+
+# 手動キック (workflow_dispatch) で指定 stack に対して terraform apply を実行する。
+# WIF → applier SA (project-wide write)。applier SA の WIF binding は
+# `attribute.event_name/workflow_dispatch` で絞っているため、push / pull_request 由来の
+# OIDC token ではこの SA を借りられない (= PR マージだけでは apply されない)。
+#
+# github_wif stack (applier SA 自体を含む) はこの workflow から触れない。self-modify 事故を
+# 避けるため、WIF 周りは従来通りローカル apply で運用する。
+
+on:
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: Infra stack to apply
+        required: true
+        type: choice
+        options:
+          - notion_discord_bot
+          - gcp_alert_discord_bot
+
+permissions:
+  contents: read
+  id-token: write
+
+# 同 stack への apply を同時に走らせない。別 stack 同士は独立なので並列可。
+concurrency:
+  group: terraform-apply-${{ inputs.stack }}
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: 1.9.8
+
+jobs:
+  apply:
+    name: Apply (${{ inputs.stack }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/${{ inputs.stack }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (applier SA)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT_APPLIER }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: terraform init -input=false
+
+      - name: terraform plan
+        run: terraform plan -input=false -out=tfplan -no-color
+
+      - name: terraform apply
+        run: terraform apply -input=false -auto-approve tfplan
