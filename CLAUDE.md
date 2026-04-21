@@ -19,10 +19,19 @@ GCP リソース定義はすべて `infra/` 配下に集約:
 | パス | 役割 |
 |---|---|
 | `infra/modules/artifact_registry/` | 共通 Artifact Registry リポジトリ module |
+| `infra/modules/github_deployer_sa/` | tool 別 GitHub Actions deployer SA (main ref 専用) module |
+| `infra/github_wif/` | WIF pool/provider + 共通 planner SA (PR plan 用 read-only) |
 | `infra/notion_discord_bot/` | notion-discord-bot の Cloud Run x2 / Cloud Tasks / Secret Manager など |
 | `infra/gcp_alert_discord_bot/` | gcp-alert-discord-bot 本体 + 他ツールのエラー監視 alert policy |
 
-各ツールの state backend は GCS (`gs://starlit-road-203901-tfstate`) / prefix はツール名ごとに分離 (`notion-discord-bot` / `gcp-alert-discord-bot`)。
+各ツールの state backend は GCS (`gs://starlit-road-203901-tfstate`) / prefix はツール名ごとに分離 (`notion-discord-bot` / `gcp-alert-discord-bot` / `github-wif`)。
+
+**CI の役割分離** (`.github/workflows/`):
+
+- `deploy-*.yaml`: push to main で image build + Cloud Run 更新。WIF → 各 tool deployer SA (write)
+- `terraform-plan.yaml`: `infra/**` の PR で `terraform plan` を走らせ結果を PR コメント化。WIF → 共通 planner SA (read-only)
+
+WIF pool provider の `attribute_condition` は `(ref=main への push) OR (pull_request イベント)` を許可し、どちらに向かうかは各 SA の IAM binding で絞る (deployer は subject を main に固定、planner は `attribute.repository` で広く許可)。
 
 ## 共通事項
 

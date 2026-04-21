@@ -1,0 +1,172 @@
+name: Terraform Plan
+
+# infra/ 配下に変更が入った PR で terraform plan を走らせ、結果を PR コメントに貼る。
+# 認証は WIF 経由の planner SA (read-only)。書き込み権限は一切持たない。
+
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+      - '.github/workflows/terraform-plan.yaml'
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+env:
+  TF_VERSION: 1.9.8
+
+jobs:
+  detect:
+    name: Detect changed stacks
+    runs-on: ubuntu-latest
+    outputs:
+      stacks: ${{ steps.filter.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # modules/ は複数 stack に波及するため、それぞれの stack の filter に含める。
+      # changes output は match した filter 名の JSON 配列。matrix にそのまま食わせる。
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            notion_discord_bot:
+              - 'infra/notion_discord_bot/**'
+              - 'infra/modules/**'
+            gcp_alert_discord_bot:
+              - 'infra/gcp_alert_discord_bot/**'
+              - 'infra/modules/**'
+            github_wif:
+              - 'infra/github_wif/**'
+
+  plan:
+    name: Plan (${{ matrix.stack }})
+    needs: detect
+    if: needs.detect.outputs.stacks != '[]' && needs.detect.outputs.stacks != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: ${{ fromJSON(needs.detect.outputs.stacks) }}
+    defaults:
+      run:
+        working-directory: infra/${{ matrix.stack }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (planner SA)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT_PLANNER }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        id: fmt
+        run: terraform fmt -check -recursive -diff
+        continue-on-error: true
+
+      - name: terraform init
+        id: init
+        run: terraform init -input=false -lock=false
+
+      - name: terraform validate
+        id: validate
+        run: terraform validate -no-color
+
+      - name: terraform plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -no-color -lock=false -input=false -out=tfplan 2>plan.stderr | tee plan.stdout
+          exitcode=${PIPESTATUS[0]}
+          echo "exitcode=$exitcode" >> "$GITHUB_OUTPUT"
+          # comment 用に plan output を拾う (stderr も合流)
+          {
+            cat plan.stdout
+            if [ -s plan.stderr ]; then
+              echo
+              echo '--- stderr ---'
+              cat plan.stderr
+            fi
+          } > plan.txt
+          exit $exitcode
+        continue-on-error: true
+
+      - name: Compose PR comment body
+        id: body
+        if: always()
+        run: |
+          set -euo pipefail
+          max_chars=60000
+          plan_file="plan.txt"
+          if [ ! -f "$plan_file" ]; then
+            plan_content="(plan output missing)"
+          else
+            if [ "$(wc -c < "$plan_file")" -gt "$max_chars" ]; then
+              head -c "$max_chars" "$plan_file" > plan.truncated
+              printf '\n\n...(truncated; full output in workflow log)' >> plan.truncated
+              plan_content=$(cat plan.truncated)
+            else
+              plan_content=$(cat "$plan_file")
+            fi
+          fi
+          # GITHUB_OUTPUT 経由ではエスケープが面倒なのでファイルに書いて github-script 側で読む
+          cat > "${GITHUB_WORKSPACE}/comment.md" <<EOF
+          <!-- terraform-plan:${{ matrix.stack }} -->
+          ### Terraform Plan — \`${{ matrix.stack }}\`
+
+          | Step | Status |
+          |---|---|
+          | fmt | \`${{ steps.fmt.outcome }}\` |
+          | init | \`${{ steps.init.outcome }}\` |
+          | validate | \`${{ steps.validate.outcome }}\` |
+          | plan | \`${{ steps.plan.outcome }}\` (exit=${{ steps.plan.outputs.exitcode }}) |
+
+          <details><summary>plan output</summary>
+
+          \`\`\`hcl
+          $plan_content
+          \`\`\`
+
+          </details>
+
+          _commit: \`${{ github.event.pull_request.head.sha }}\`_
+          EOF
+
+      - name: Upsert sticky PR comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/comment.md`, 'utf8');
+            const marker = `<!-- terraform-plan:${{ matrix.stack }} -->`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body,
+              });
+            }
+
+      - name: Fail job if plan errored
+        if: steps.plan.outputs.exitcode != '0'
+        run: |
+          echo "::error::terraform plan exited ${{ steps.plan.outputs.exitcode }}"
+          exit 1
