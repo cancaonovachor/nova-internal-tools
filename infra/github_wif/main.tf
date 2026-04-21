@@ -93,3 +93,61 @@ resource "google_storage_bucket_iam_member" "planner_state_reader" {
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_service_account.planner.email}"
 }
+
+# -------------------- Applier SA (write, workflow_dispatch only) --------------------
+# GitHub Actions の `workflow_dispatch` (手動キック) でのみ使う apply 用 SA。
+# 権限は starlit-road-203901 のアプリ stack (notion_discord_bot / gcp_alert_discord_bot) を
+# 一通り書き換えられる範囲をカバーする。
+# github_wif stack 自身 (当ファイル) は applier SA を含めて CI から書き換えず、
+# ローカル apply で運用する (bootstrap と self-modify 事故回避のため)。
+resource "google_service_account" "applier" {
+  project      = local.project_id
+  account_id   = "tf-applier"
+  display_name = "GitHub Actions Terraform applier (workflow_dispatch only)"
+}
+
+# `attribute.event_name/workflow_dispatch` の principalSet で impersonate を絞る。
+# pool provider 側の attribute_condition が repo + (ref=main OR event=pull_request) を
+# ゲートしているため、workflow_dispatch は main ref 以外からは token 発行で弾かれる。
+# 結果として「main ref からの workflow_dispatch」限定になる。push / pull_request は
+# event_name が違うので当 SA を借りられない。
+resource "google_service_account_iam_member" "applier_wif_binding" {
+  service_account_id = google_service_account.applier.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github_actions.name}/attribute.event_name/workflow_dispatch"
+}
+
+# アプリ stack の apply を通すための project-level role。
+# editor が run / artifactregistry / secretmanager / cloudtasks / pubsub / monitoring /
+# serviceusage 等を広くカバー。SA resource 自体と project IAM は editor に含まれないので追加で付与する。
+resource "google_project_iam_member" "applier_editor" {
+  project = local.project_id
+  role    = "roles/editor"
+  member  = "serviceAccount:${google_service_account.applier.email}"
+}
+
+resource "google_project_iam_member" "applier_sa_admin" {
+  project = local.project_id
+  role    = "roles/iam.serviceAccountAdmin"
+  member  = "serviceAccount:${google_service_account.applier.email}"
+}
+
+# Cloud Run / Cloud Tasks 作成時に runtime SA を bind するため actAs が要る。
+resource "google_project_iam_member" "applier_sa_user" {
+  project = local.project_id
+  role    = "roles/iam.serviceAccountUser"
+  member  = "serviceAccount:${google_service_account.applier.email}"
+}
+
+resource "google_project_iam_member" "applier_project_iam_admin" {
+  project = local.project_id
+  role    = "roles/resourcemanager.projectIamAdmin"
+  member  = "serviceAccount:${google_service_account.applier.email}"
+}
+
+# tfstate の read/write。editor で objects.* は持つが、意図を明示するため bucket-level で付与。
+resource "google_storage_bucket_iam_member" "applier_state_admin" {
+  bucket = local.tfstate_bucket
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.applier.email}"
+}

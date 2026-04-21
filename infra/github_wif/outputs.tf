@@ -12,3 +12,8 @@ output "planner_sa_email" {
   value       = google_service_account.planner.email
   description = "Terraform planner SA email. PR の terraform plan ワークフローで WIF 経由 impersonate する (GitHub secret `WIF_SERVICE_ACCOUNT_PLANNER`)"
 }
+
+output "applier_sa_email" {
+  value       = google_service_account.applier.email
+  description = "Terraform applier SA email. workflow_dispatch の terraform apply ワークフローで WIF 経由 impersonate する (GitHub secret `WIF_SERVICE_ACCOUNT_APPLIER`)"
+}

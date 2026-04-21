@@ -102,22 +102,20 @@ terraform plan
 
 ## 更新
 
-コード変更後の再デプロイ:
+### コード変更 (アプリ側)
 
-```bash
-# 新イメージを push (同タグ上書きでも可)
-cd notion_discord_bot
-gcloud builds submit . --config deploy/cloudbuild.yaml
+`main` への push で `deploy-notion-discord-bot.yaml` が走り、image build + Cloud Run の
+`--image=<sha>` 差し替えまで自動で回る。手作業は不要。
 
-# Cloud Run は同じ image_url を参照しているので revision を強制するには:
-cd ../infra/notion_discord_bot
-terraform apply \
-  -replace=google_cloud_run_v2_service.ingress \
-  -replace=google_cloud_run_v2_service.worker \
-  -replace=google_cloud_run_v2_service_iam_member.ingress_public \
-  -replace=google_cloud_run_v2_service_iam_member.ingress_invokes_worker
-# (IAM member も一緒に -replace しないと invoker binding が落ちる)
-```
+### Infra 変更 (当ディレクトリ)
+
+1. `feat/xxx` で変更して PR を作る → `terraform-plan.yaml` が PR コメントに plan を貼る
+2. plan を確認して merge
+3. merge 後に GitHub の Actions タブ → `Terraform Apply` → `Run workflow` → `stack: notion_discord_bot`
+   を選んでキック。WIF → applier SA で apply が走る
+
+ローカルから `terraform apply` を打つ必要は通常無い。applier が権限不足で失敗するケース
+(= `github_wif` stack 自身の変更) だけ従来通りローカルで apply する。
 
 ## 出力
 
