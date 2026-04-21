@@ -236,6 +236,17 @@ resource "google_cloud_run_v2_service" "worker" {
     google_secret_manager_secret_iam_member.worker_discord_reader,
     google_secret_manager_secret_iam_member.worker_discord_deletion_reader,
   ]
+
+  # image は GitHub Actions deploy workflow が更新する (`gcloud run services update --image=...:<sha>`)。
+  # Terraform は初回作成時にのみ image を設定し、その後の差分は無視する。
+  # client / client_version は gcloud / GCP が書き込むメタデータで、Terraform は管理しない。
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+      client,
+      client_version,
+    ]
+  }
 }
 
 # ingress SA のみ worker を invoke できる
@@ -325,6 +336,17 @@ resource "google_cloud_run_v2_service" "ingress" {
     google_cloud_run_v2_service.worker,
     google_cloud_tasks_queue.queue,
   ]
+
+  # image は GitHub Actions deploy workflow が更新する (`gcloud run services update --image=...:<sha>`)。
+  # Terraform は初回作成時にのみ image を設定し、その後の差分は無視する。
+  # client / client_version は gcloud / GCP が書き込むメタデータで、Terraform は管理しない。
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+      client,
+      client_version,
+    ]
+  }
 }
 
 # Notion からの webhook 受信用に ingress は公開

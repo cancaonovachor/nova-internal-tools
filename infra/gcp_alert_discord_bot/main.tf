@@ -152,6 +152,17 @@ resource "google_cloud_run_v2_service" "service" {
     google_project_service.apis,
     google_secret_manager_secret_iam_member.worker_discord_reader,
   ]
+
+  # image は GitHub Actions deploy workflow が更新する (`gcloud run services update --image=...:<sha>`)。
+  # Terraform は初回作成時にのみ image を設定し、その後の差分は無視する。
+  # client / client_version は gcloud / GCP が書き込むメタデータで、Terraform は管理しない。
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+      client,
+      client_version,
+    ]
+  }
 }
 
 # invoker SA のみ Cloud Run を呼べる (Pub/Sub push の OIDC がこの SA)
