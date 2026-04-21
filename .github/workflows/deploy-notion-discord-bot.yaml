@@ -1,0 +1,78 @@
+name: Deploy Notion Discord Bot
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'notion_discord_bot/**'
+      - '.github/workflows/deploy-notion-discord-bot.yaml'
+
+env:
+  PROJECT_ID: starlit-road-203901
+  REGION: asia-northeast1
+  AR_REPO: notion-discord-bot
+  IMAGE_NAME: notion-discord-bot
+  INGRESS_SERVICE: notion-discord-bot-ingress
+  WORKER_SERVICE: notion-discord-bot-worker
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT_NOTION }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        working-directory: notion_discord_bot
+        run: |
+          IMAGE_BASE=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}
+          docker build \
+            --platform linux/amd64 \
+            -f deploy/Dockerfile \
+            -t $IMAGE_BASE:latest \
+            -t $IMAGE_BASE:${{ github.sha }} \
+            .
+
+      - name: Push Docker image
+        run: |
+          IMAGE_BASE=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}
+          docker push $IMAGE_BASE:latest
+          docker push $IMAGE_BASE:${{ github.sha }}
+
+      # ingress / worker は同イメージで args だけ異なる。revision 強制に image SHA を使う。
+      - name: Deploy ingress Cloud Run revision
+        run: |
+          IMAGE=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          gcloud run services update ${{ env.INGRESS_SERVICE }} \
+            --region=${{ env.REGION }} \
+            --image=$IMAGE
+
+      - name: Deploy worker Cloud Run revision
+        run: |
+          IMAGE=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          gcloud run services update ${{ env.WORKER_SERVICE }} \
+            --region=${{ env.REGION }} \
+            --image=$IMAGE
+
+      - name: Print deployment info
+        run: |
+          echo "Deployed image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          gcloud run services describe ${{ env.INGRESS_SERVICE }} --region=${{ env.REGION }} --format='value(status.url)'
+          gcloud run services describe ${{ env.WORKER_SERVICE }}  --region=${{ env.REGION }} --format='value(status.url)'

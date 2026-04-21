@@ -55,7 +55,7 @@ uv run uvicorn app.main:app --reload --port 8080
 
 ## 管理している Alert Policy (他ツール向け)
 
-このツールは Pub/Sub → Discord の「通知配信インフラ」も兼ねている。`terraform/main.tf` に他ツールのエラー監視用 alert policy をまとめて定義している:
+このツールは Pub/Sub → Discord の「通知配信インフラ」も兼ねている。`infra/gcp_alert_discord_bot/main.tf` に他ツールのエラー監視用 alert policy をまとめて定義している:
 
 | Policy | 対象 | 通知先 |
 |---|---|---|

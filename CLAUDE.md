@@ -12,11 +12,22 @@ CancaoNova 内部向けツール群の monorepo。各ツールは独立したサ
 
 ツール固有の詳細はそれぞれの `<tool>/CLAUDE.md` を参照。
 
+## インフラ (Terraform)
+
+GCP リソース定義はすべて `infra/` 配下に集約:
+
+| パス | 役割 |
+|---|---|
+| `infra/modules/artifact_registry/` | 共通 Artifact Registry リポジトリ module |
+| `infra/notion_discord_bot/` | notion-discord-bot の Cloud Run x2 / Cloud Tasks / Secret Manager など |
+| `infra/gcp_alert_discord_bot/` | gcp-alert-discord-bot 本体 + 他ツールのエラー監視 alert policy |
+
+各ツールの state backend は GCS (`gs://starlit-road-203901-tfstate`) / prefix はツール名ごとに分離 (`notion-discord-bot` / `gcp-alert-discord-bot`)。
+
 ## 共通事項
 
 - **Python 3.12+ / uv**。各ツールが自前の `pyproject.toml` と `.venv`
 - **GCP**: プロジェクト `starlit-road-203901` (asia-northeast1 中心)
-- **Terraform backend**: `gs://starlit-road-203901-tfstate`、prefix はツール名 (例: `notion-discord-bot`)
 - **branch 戦略**: `feat/<topic>` から `main` への PR。merge は PR 経由
 - **commit message**: 日本語 + conventional prefix (`feat:`, `fix:`, `chore:` 等)。Co-Authored-By で Claude を併記する慣例あり
 

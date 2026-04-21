@@ -33,14 +33,23 @@ resource "google_project_service" "apis" {
 }
 
 # -------------------- Artifact Registry --------------------
-resource "google_artifact_registry_repository" "repo" {
+module "artifact_registry" {
+  source = "../modules/artifact_registry"
+
   project       = local.project_id
   location      = local.region
   repository_id = local.artifact_repo
-  format        = "DOCKER"
   description   = "gcp-alert-discord-bot container images"
 
   depends_on = [google_project_service.apis]
+}
+
+# 旧構成 (terraform/ 配下のルートモジュール直書き) からの state 移行用。
+# 既存 state の `google_artifact_registry_repository.repo` をモジュール配下に
+# 再マップし、destroy+create を避ける。
+moved {
+  from = google_artifact_registry_repository.repo
+  to   = module.artifact_registry.google_artifact_registry_repository.repo
 }
 
 # -------------------- Secret: Discord webhook --------------------
@@ -325,4 +334,48 @@ resource "google_monitoring_alert_policy" "cloud_run_job_error" {
   notification_channels = [google_monitoring_notification_channel.pubsub[0].id]
 
   depends_on = [google_monitoring_notification_channel.pubsub]
+}
+
+# -------------------- GitHub Actions Deployer --------------------
+# WIF 経由で GitHub Actions から image push + Cloud Run revision 更新を行う SA。
+# pool / provider は infra/github_wif/ で事前 apply 済みである前提。
+data "google_iam_workload_identity_pool" "github_actions" {
+  workload_identity_pool_id = "github-actions"
+  project                   = local.project_id
+}
+
+module "github_deployer" {
+  source = "../modules/github_deployer_sa"
+
+  project       = local.project_id
+  sa_id         = "gcp-alert-bot-deployer"
+  display_name  = "gcp-alert-discord-bot GitHub Actions deployer"
+  wif_pool_name = data.google_iam_workload_identity_pool.github_actions.name
+  github_repo   = "cancaonovachor/nova-internal-tools"
+}
+
+# deployer は当該ツールの AR repo に push できる
+resource "google_artifact_registry_repository_iam_member" "deployer_ar_writer" {
+  project    = local.project_id
+  location   = local.region
+  repository = module.artifact_registry.repository_id
+  role       = "roles/artifactregistry.writer"
+  member     = "serviceAccount:${module.github_deployer.email}"
+}
+
+# deployer は当該サービスのみ update できる
+resource "google_cloud_run_v2_service_iam_member" "deployer_service_developer" {
+  project  = google_cloud_run_v2_service.service.project
+  location = google_cloud_run_v2_service.service.location
+  name     = google_cloud_run_v2_service.service.name
+  role     = "roles/run.developer"
+  member   = "serviceAccount:${module.github_deployer.email}"
+}
+
+# Cloud Run デプロイ時に runtime SA を設定するため、deployer に
+# iam.serviceAccountUser を与える (worker SA のみ)
+resource "google_service_account_iam_member" "deployer_acts_as_worker_runtime" {
+  service_account_id = google_service_account.worker.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${module.github_deployer.email}"
 }

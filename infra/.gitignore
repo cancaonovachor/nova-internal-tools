@@ -1,0 +1,15 @@
+# Terraform runtime artifacts
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+tfplan
+tfplan.*
+
+# tfvars policy: tfvars ファイル自体を作らない方針 (root CLAUDE.md 参照)。
+# うっかり作成されても commit されないよう全パターンを除外。
+*.tfvars
+*.auto.tfvars
+*.tfvars.json

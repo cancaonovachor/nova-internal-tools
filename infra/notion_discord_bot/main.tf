@@ -20,17 +20,31 @@ resource "google_project_service" "apis" {
 }
 
 # -------------------- Artifact Registry --------------------
-resource "google_artifact_registry_repository" "repo" {
+module "artifact_registry" {
+  source = "../modules/artifact_registry"
+
   project       = var.project_id
   location      = var.region
   repository_id = var.artifact_repo
-  format        = "DOCKER"
   description   = "notion-discord-bot container images"
 
   depends_on = [google_project_service.apis]
 }
 
+# 旧構成 (terraform/ 配下のルートモジュール直書き) からの state 移行用。
+# 既存 state の `google_artifact_registry_repository.repo` をモジュール配下に
+# 再マップし、destroy+create を避ける。
+moved {
+  from = google_artifact_registry_repository.repo
+  to   = module.artifact_registry.google_artifact_registry_repository.repo
+}
+
 # -------------------- Secret Manager --------------------
+# secret リソースのみ Terraform で管理する。version (実際の値) は
+# `gcloud secrets versions add <secret-id> --data-file=-` でアウトオブバンドに投入する。
+# 旧構成ではここに `google_secret_manager_secret_version.*_v1` リソースがあり
+# var から secret_data を流し込んでいたが、tfvars に秘匿値が残る構成を避けるため撤去。
+# 移行時は `terraform state rm` で旧 version リソースを state から除去する (下記 README 参照)。
 resource "google_secret_manager_secret" "verification_token" {
   project   = var.project_id
   secret_id = "notion-verification-token"
@@ -39,11 +53,6 @@ resource "google_secret_manager_secret" "verification_token" {
   }
 
   depends_on = [google_project_service.apis]
-}
-
-resource "google_secret_manager_secret_version" "verification_token_v1" {
-  secret      = google_secret_manager_secret.verification_token.id
-  secret_data = var.notion_verification_token
 }
 
 resource "google_secret_manager_secret" "api_key" {
@@ -56,11 +65,6 @@ resource "google_secret_manager_secret" "api_key" {
   depends_on = [google_project_service.apis]
 }
 
-resource "google_secret_manager_secret_version" "api_key_v1" {
-  secret      = google_secret_manager_secret.api_key.id
-  secret_data = var.notion_api_key
-}
-
 resource "google_secret_manager_secret" "discord_webhook" {
   project   = var.project_id
   secret_id = "notion-bot-discord-webhook"
@@ -71,13 +75,6 @@ resource "google_secret_manager_secret" "discord_webhook" {
   depends_on = [google_project_service.apis]
 }
 
-# 空文字のときは version を作らない（Cloud Run 側も env を条件で付ける）
-resource "google_secret_manager_secret_version" "discord_webhook_v1" {
-  count       = var.discord_webhook_url == "" ? 0 : 1
-  secret      = google_secret_manager_secret.discord_webhook.id
-  secret_data = var.discord_webhook_url
-}
-
 resource "google_secret_manager_secret" "discord_deletion_webhook" {
   project   = var.project_id
   secret_id = "notion-bot-discord-deletion-webhook"
@@ -86,12 +83,6 @@ resource "google_secret_manager_secret" "discord_deletion_webhook" {
   }
 
   depends_on = [google_project_service.apis]
-}
-
-resource "google_secret_manager_secret_version" "discord_deletion_webhook_v1" {
-  count       = var.discord_deletion_webhook_url == "" ? 0 : 1
-  secret      = google_secret_manager_secret.discord_deletion_webhook.id
-  secret_data = var.discord_deletion_webhook_url
 }
 
 # -------------------- Service Accounts --------------------
@@ -212,7 +203,7 @@ resource "google_cloud_run_v2_service" "worker" {
       }
 
       dynamic "env" {
-        for_each = var.discord_webhook_url == "" ? [] : [1]
+        for_each = var.enable_discord_webhook ? [1] : []
         content {
           name = "DISCORD_WEBHOOK_URL"
           value_source {
@@ -225,7 +216,7 @@ resource "google_cloud_run_v2_service" "worker" {
       }
 
       dynamic "env" {
-        for_each = var.discord_deletion_webhook_url == "" ? [] : [1]
+        for_each = var.enable_discord_deletion_webhook ? [1] : []
         content {
           name = "DISCORD_DELETION_WEBHOOK_URL"
           value_source {
@@ -241,7 +232,6 @@ resource "google_cloud_run_v2_service" "worker" {
 
   depends_on = [
     google_project_service.apis,
-    google_secret_manager_secret_version.api_key_v1,
     google_secret_manager_secret_iam_member.worker_api_key_reader,
     google_secret_manager_secret_iam_member.worker_discord_reader,
     google_secret_manager_secret_iam_member.worker_discord_deletion_reader,
@@ -331,7 +321,6 @@ resource "google_cloud_run_v2_service" "ingress" {
 
   depends_on = [
     google_project_service.apis,
-    google_secret_manager_secret_version.verification_token_v1,
     google_secret_manager_secret_iam_member.ingress_verification_reader,
     google_cloud_run_v2_service.worker,
     google_cloud_tasks_queue.queue,
@@ -345,4 +334,63 @@ resource "google_cloud_run_v2_service_iam_member" "ingress_public" {
   name     = google_cloud_run_v2_service.ingress.name
   role     = "roles/run.invoker"
   member   = "allUsers"
+}
+
+# -------------------- GitHub Actions Deployer --------------------
+# WIF 経由で GitHub Actions から image push + Cloud Run revision 更新を行う SA。
+# pool / provider 自体は infra/github_wif/ で作成しておくこと (先に apply 必須)。
+data "google_iam_workload_identity_pool" "github_actions" {
+  workload_identity_pool_id = "github-actions"
+  project                   = var.project_id
+}
+
+module "github_deployer" {
+  source = "../modules/github_deployer_sa"
+
+  project       = var.project_id
+  sa_id         = "notion-bot-deployer"
+  display_name  = "notion-discord-bot GitHub Actions deployer"
+  wif_pool_name = data.google_iam_workload_identity_pool.github_actions.name
+  github_repo   = "cancaonovachor/nova-internal-tools"
+}
+
+# deployer は当該ツールの AR repo に push できる
+resource "google_artifact_registry_repository_iam_member" "deployer_ar_writer" {
+  project    = var.project_id
+  location   = var.region
+  repository = module.artifact_registry.repository_id
+  role       = "roles/artifactregistry.writer"
+  member     = "serviceAccount:${module.github_deployer.email}"
+}
+
+# deployer は当該サービスのみ update できる (ingress)
+resource "google_cloud_run_v2_service_iam_member" "deployer_ingress_developer" {
+  project  = google_cloud_run_v2_service.ingress.project
+  location = google_cloud_run_v2_service.ingress.location
+  name     = google_cloud_run_v2_service.ingress.name
+  role     = "roles/run.developer"
+  member   = "serviceAccount:${module.github_deployer.email}"
+}
+
+# deployer は当該サービスのみ update できる (worker)
+resource "google_cloud_run_v2_service_iam_member" "deployer_worker_developer" {
+  project  = google_cloud_run_v2_service.worker.project
+  location = google_cloud_run_v2_service.worker.location
+  name     = google_cloud_run_v2_service.worker.name
+  role     = "roles/run.developer"
+  member   = "serviceAccount:${module.github_deployer.email}"
+}
+
+# Cloud Run デプロイ時に runtime SA (ingress/worker) を設定するため、
+# deployer に iam.serviceAccountUser を与える (他ツールの SA には出さない)。
+resource "google_service_account_iam_member" "deployer_acts_as_ingress_runtime" {
+  service_account_id = google_service_account.ingress.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${module.github_deployer.email}"
+}
+
+resource "google_service_account_iam_member" "deployer_acts_as_worker_runtime" {
+  service_account_id = google_service_account.worker.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${module.github_deployer.email}"
 }

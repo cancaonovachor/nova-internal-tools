@@ -57,7 +57,7 @@ def extract_page_title(page: dict[str, Any]) -> str | None:
     for prop in props.values():
         if prop.get("type") == "title":
             rich = prop.get("title", []) or []
-            text = "".join(r.get("plain_text", "") for r in rich)
+            text = "".join(r.get("plain_text", "") for r in rich).strip()
             return text or None
     return None
 
