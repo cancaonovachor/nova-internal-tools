@@ -35,7 +35,7 @@ def format_event(enriched: dict[str, Any]) -> dict[str, Any]:
     event_type = event.get("type", "unknown")
     action = EVENT_ACTION.get(event_type, event_type)
 
-    title = enriched.get("page_title") or "(無題)"
+    title = (enriched.get("page_title") or "").strip() or "(無題)"
     url = enriched.get("page_url")
     authors = [a for a in (enriched.get("authors") or []) if a] or ["unknown"]
     author_str = ", ".join(authors)
