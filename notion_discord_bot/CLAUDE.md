@@ -123,6 +123,11 @@ state backend は **GCS (`gs://starlit-road-203901-tfstate`, prefix `notion-disc
 
 新しい例外経路を追加する時はこの方針を踏襲: "リトライで救われる見込み" は warning、"本当に捨てる" 最終段階のみ exception。
 
+### 10. Cloud Run の `cpu_idle` は `true` で固定 (= CPU throttling 有効)
+- Terraform 側で `resources.cpu_idle = true` を明示してある。これを `false` にすると container alive の間ずっと vCPU/memory が課金され、**1日 ~70円** 余計に流れる (past 7d 計測の実績)
+- `cpu_idle = true` 下では **response 返却後の `BackgroundTasks` が CPU を失って詰まる**。ingress は過去に BackgroundTasks で enqueue していたが、同期 enqueue に戻している (`ingress/main.py`)。ここを非同期化したくなっても `cpu_idle` を切らずに済む別手段 (Cloud Tasks 側の併用等) を先に検討する
+- 万一手元 / gcloud で `--no-cpu-throttling` を叩いて drift させても、次の terraform apply で戻る
+
 ## リポジトリ内の主な場所
 
 | パス | 役割 |
