@@ -3,7 +3,7 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 
 from common.signature import verify_notion_signature
 from common.task_enqueuer import create_enqueuer
@@ -38,7 +38,6 @@ def health() -> dict:
 @app.post("/webhook/notion")
 async def notion_webhook(
     request: Request,
-    background_tasks: BackgroundTasks,
     x_notion_signature: str | None = Header(default=None),
 ) -> dict:
     raw_body = await request.body()
@@ -74,13 +73,12 @@ async def notion_webhook(
     event_id = payload.get("id") if isinstance(payload, dict) else None
     task_id = f"notion-{event_id}" if event_id else None
 
-    # Notion に素早く 2xx を返すため enqueue は BackgroundTask へ。
-    background_tasks.add_task(_enqueue_safe, payload, task_id)
-    return {"status": "accepted", "event_type": event_type, "task_id": task_id}
-
-
-def _enqueue_safe(payload: dict, task_id: str | None) -> None:
+    # Cloud Run の CPU throttling 有効下では response 返却後に CPU が絞られて
+    # BackgroundTask が詰まりうるため、enqueue は同期で実行する。
     try:
         enqueuer.enqueue(payload, task_id)
     except Exception:
         logger.exception("enqueue failed (task_id=%s)", task_id)
+        raise HTTPException(status_code=503, detail="enqueue failed")
+
+    return {"status": "accepted", "event_type": event_type, "task_id": task_id}

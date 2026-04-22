@@ -190,6 +190,8 @@ resource "google_cloud_run_v2_service" "worker" {
           cpu    = "1"
           memory = "512Mi"
         }
+        # request 処理中のみ CPU 割当 (Cloud Run デフォルト)。idle 中の常時課金を避ける。
+        cpu_idle = true
       }
 
       env {
@@ -286,6 +288,8 @@ resource "google_cloud_run_v2_service" "ingress" {
           cpu    = "1"
           memory = "512Mi"
         }
+        # request 処理中のみ CPU 割当 (Cloud Run デフォルト)。idle 中の常時課金を避ける。
+        cpu_idle = true
       }
 
       env {
