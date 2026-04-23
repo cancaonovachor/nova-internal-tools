@@ -28,7 +28,8 @@ uv run uvicorn app.main:app --reload --port 8080
 ## 落とし穴 (想定 / 踏んだもの)
 
 - **Pub/Sub push の OIDC**: subscription 作成前に `pubsub service agent` に `serviceAccountTokenCreator` を付ける必要がある (Terraform で済ませている)
-- **Budget / Monitoring publisher IAM は Terraform で管理しない**: 対象 SA (`billing-budgets@system`, `service-<proj_num>@gcp-sa-monitoring-notification`) は "Budget 設定" / "Monitoring 通知チャンネル作成" の時点で初めてプロジェクトに現れる。先回りして IAM を振ろうとすると 400。GCP が自動付与するので任せる
+- **Monitoring → topic の publisher IAM は明示付与が必要**: 「自動付与される」のは Budget 側だけ。Monitoring の Pub/Sub notification channel は publisher 権限を一切自動付与しない。落とし穴の症状は「alert policy も channel も ACTIVE / 検証も OK なのに Discord に何も来ない」+ Monitoring 側にエラーログも残らない (silent drop)。`google_pubsub_topic_iam_member.monitoring_publisher` で `service-<proj_num>@gcp-sa-monitoring-notification` に `roles/pubsub.publisher` を付与
+- **Budget の publisher IAM は Terraform 管理外**: `billing-budgets@system` は "Budget を Pub/Sub topic 宛に設定" した瞬間に GCP が自動付与する。Budget 未設定の段階で Terraform から付与しようとすると 400 になるため任せる
 - **Cloud Run の `/healthz` 予約**: 今回は `/health` を使用 (notion_discord_bot と同様)
 
 ## 設定ポリシー (feedback_no_tfvars.md 参照)
