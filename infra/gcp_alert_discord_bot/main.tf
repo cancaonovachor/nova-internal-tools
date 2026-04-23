@@ -74,11 +74,29 @@ resource "google_pubsub_topic" "alerts" {
   depends_on = [google_project_service.apis]
 }
 
-# NOTE: Budget / Monitoring notification channel の publish 権限は GCP 側が自動付与する。
-# - Budget: 予算設定で topic を指定すると billing-budgets@system に publisher 権限が付く
-# - Monitoring: notification channel 作成で gcp-sa-monitoring-notification に付く
-# これらを Terraform で管理しようとすると、対象 SA がまだプロジェクトに現れていない
-# 段階で 400 エラーになるため、Terraform 管理対象から外している。
+# Cloud Monitoring → topic への publish 権限。
+# Monitoring の Pub/Sub notification channel は **自動付与されない** ため明示的に付与が必要。
+# (過去メモには「自動付与される」とあったが事実誤認。手動付与しないと Monitoring からの
+#  publish が無音で失敗し、Discord に何も来ない状態になっていた)
+# notification channel 作成と同時に gcp-sa-monitoring-notification service agent が
+# プロジェクトに現れるため、本 stack の apply 順序であれば対象 SA は必ず存在する。
+resource "google_pubsub_topic_iam_member" "monitoring_publisher" {
+  count = var.create_monitoring_channel ? 1 : 0
+
+  project = local.project_id
+  topic   = google_pubsub_topic.alerts.name
+  role    = "roles/pubsub.publisher"
+  member  = "serviceAccount:service-${local.project_number}@gcp-sa-monitoring-notification.iam.gserviceaccount.com"
+
+  # notification channel 作成時に service agent が provision されるため、
+  # Monitoring channel リソースより後に IAM 付与が走るよう順序付けする。
+  depends_on = [google_monitoring_notification_channel.pubsub]
+}
+
+# NOTE: Budget からの publish 権限 (billing-budgets@system) は Terraform で管理しない。
+# Budget を Pub/Sub topic 宛に設定すると GCP が自動付与する。Budget 未設定の状態で
+# Terraform から付与しようとすると "service account does not exist" で 400 になるため、
+# 必要になったら Console / gcloud から付与する。
 
 # -------------------- Service Accounts --------------------
 # Cloud Run 本体が使う SA
